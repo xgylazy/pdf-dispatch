@@ -33,21 +33,18 @@ for target in "${TARGETS[@]}"; do
   for kv in $rest; do
     case "$kv" in app=*) app="${kv#app=}" ;; esac
   done
-  remote_host="${host#*@}"
-
   if [[ "$app" == "scheduler" ]]; then
     PKG="$PKG_SC"; DIR="$DIR_SC"
   else
     PKG="$PKG_WK"; DIR="$DIR_WK"
   fi
-  echo "==> $remote_host ($app -> $DIR, scheduler=$SCHEDULER_URL)"
+  echo "==> $host ($app -> $DIR, scheduler=$SCHEDULER_URL)"
 
-  scp $SSH_OPTS "$PKG" "$remote_host:/tmp/$(basename "$PKG")"
-  # 对 worker 注入 SCHEDULER_URL；scheduler 不需要传
+  scp $SSH_OPTS "$PKG" "$host:/tmp/$(basename "$PKG")"
   REMOTE_ENV=""
   [[ "$app" == "worker" ]] && REMOTE_ENV="SCHEDULER_URL=$SCHEDULER_URL"
 
-  ssh $SSH_OPTS "$remote_host" bash <<REMOTE
+  ssh $SSH_OPTS "$host" bash <<REMOTE
     set -uo pipefail
     mkdir -p "$DIR"
     tar -xzf "/tmp/$(basename "$PKG")" -C "$DIR"
@@ -56,6 +53,6 @@ for target in "${TARGETS[@]}"; do
     echo \$! > "$DIR/data/${app}.pid"
     echo "  [started] pid=\$(cat $DIR/data/${app}.pid) $app"
 REMOTE
-  echo "<== $remote_host $app ok"; echo
+  echo "<== $host $app ok"; echo
 done
 echo "[deploy] 全部完成"
