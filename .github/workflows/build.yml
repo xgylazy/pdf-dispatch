@@ -14,6 +14,7 @@ jobs:
 
       - name: Build standalone bundle
         run: |
+          chmod +x scripts/*.sh                     # 修复 Windows 丢失的可执行位
           test -f VERSION && VERSION=$(cat VERSION) || VERSION="0.1.0"
           export VERSION
           ./scripts/build_standalone.sh
