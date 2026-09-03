@@ -63,7 +63,7 @@ echo "[3/3] 组装 green 包"
 
 # worker 包
 mkdir -p "$DIST_WK/venv" "$DIST_WK/data/logs"
-cp -r "$WK_VENV/"* "$DIST_WK/venv/"
+cp -a "$WK_VENV/." "$DIST_WK/venv/"
 cp -r "$PROJ/worker" "$PROJ/shared" "$DIST_WK/"
 cat > "$DIST_WK/start.sh" <<'WKSTART'
 #!/bin/bash
@@ -79,7 +79,7 @@ WKSTART
 
 # scheduler 包
 mkdir -p "$DIST_SC/venv" "$DIST_SC/data/logs"
-cp -r "$SC_VENV/"* "$DIST_SC/venv/"
+cp -a "$SC_VENV/." "$DIST_SC/venv/"
 cp -r "$PROJ/scheduler" "$PROJ/shared" "$DIST_SC/"
 cat > "$DIST_SC/start.sh" <<'SCSTART'
 #!/bin/bash
