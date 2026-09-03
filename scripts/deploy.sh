@@ -14,33 +14,48 @@ DIR_SC="/opt/pdf-scheduler"
 SSH_OPTS="${SSH_OPTS:--i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=10}"
 mapfile -t TARGETS < <(grep -vE '^\s*#|^\s*$' "$1")
 
-echo "[deploy] worker=$PKG_WK  scheduler=$PKG_SC  targets=${#TARGETS[@]}"
+# 从 servers.txt 里找 scheduler IP，worker 自动连这个 IP 的 8000 端口
+SCHEDULER_IP=""
+for t in "${TARGETS[@]}"; do
+  host="${t%% *}"; rest="${t#* }"
+  for kv in $rest; do
+    [[ "$kv" == "app=scheduler" ]] && SCHEDULER_IP="${host#*@}" && break 2
+  done
+done
+[[ -n "$SCHEDULER_IP" ]] || { echo "[ERROR] servers.txt 里没找到 app=scheduler 的行"; exit 2; }
+export SCHEDULER_URL="http://${SCHEDULER_IP}:8000"
+echo "[deploy] scheduler=$SCHEDULER_URL  targets=${#TARGETS[@]}"
 for t in "${TARGETS[@]}"; do echo "  $t"; done; echo
 
 for target in "${TARGETS[@]}"; do
-  host="${target%% *}"; kv="${target#* }"
+  host="${target%% *}"; rest="${target#* }"
   app="worker"
-  for kvpair in $kv; do
-    case "$kvpair" in app=*) app="${kvpair#app=}" ;; esac
+  for kv in $rest; do
+    case "$kv" in app=*) app="${kv#app=}" ;; esac
   done
+  remote_host="${host#*@}"
 
   if [[ "$app" == "scheduler" ]]; then
     PKG="$PKG_SC"; DIR="$DIR_SC"
   else
     PKG="$PKG_WK"; DIR="$DIR_WK"
   fi
-  echo "==> $host ($app -> $DIR)"
+  echo "==> $remote_host ($app -> $DIR, scheduler=$SCHEDULER_URL)"
 
-  scp $SSH_OPTS "$PKG" "$host:/tmp/$(basename "$PKG")"
-  ssh $SSH_OPTS "$host" bash <<REMOTE
+  scp $SSH_OPTS "$PKG" "$remote_host:/tmp/$(basename "$PKG")"
+  # 对 worker 注入 SCHEDULER_URL；scheduler 不需要传
+  REMOTE_ENV=""
+  [[ "$app" == "worker" ]] && REMOTE_ENV="SCHEDULER_URL=$SCHEDULER_URL"
+
+  ssh $SSH_OPTS "$remote_host" bash <<REMOTE
     set -uo pipefail
     mkdir -p "$DIR"
     tar -xzf "/tmp/$(basename "$PKG")" -C "$DIR"
     cd "$DIR"
-    nohup ./start.sh > "$DIR/data/logs/${app}.log" 2>&1 &
+    $REMOTE_ENV nohup ./start.sh > "$DIR/data/logs/${app}.log" 2>&1 &
     echo \$! > "$DIR/data/${app}.pid"
     echo "  [started] pid=\$(cat $DIR/data/${app}.pid) $app"
 REMOTE
-  echo "<== $host $app ok"; echo
+  echo "<== $remote_host $app ok"; echo
 done
 echo "[deploy] 全部完成"
