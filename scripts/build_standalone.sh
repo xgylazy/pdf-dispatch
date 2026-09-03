@@ -7,6 +7,7 @@ BUILD_DIR="${PROJ}/build"
 DIST_WK="${PROJ}/dist/standalone-worker"
 DIST_SC="${PROJ}/dist/standalone-scheduler"
 VERSION="${VERSION:-$(cat "$PROJ/VERSION" 2>/dev/null || echo 0.1.0)}"
+echo "[build] VERSION=$VERSION"
 
 echo "════════════════════════════════════════════════════"
 echo "  pdf-dispatch 绿色包 v${VERSION}"
