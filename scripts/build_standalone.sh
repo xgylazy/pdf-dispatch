@@ -71,7 +71,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$HERE/venv/bin:$PATH"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
-export SCHEDULER_URL="${SCHEDULER_URL:-http://10.0.0.10:8000}"
+export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:8000}"
 export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
 cd "$HERE"
 exec "$HERE/venv/bin/python" -m worker.main
