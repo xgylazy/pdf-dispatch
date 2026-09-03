@@ -1,0 +1,58 @@
+name: Build Standalone Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'                 # push tag v0.1.0 / v1.0.0 等触发
+  workflow_dispatch:         # 也支持手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      #   pdf_datch 依赖的 pdf2tree 工程（CI 里 clone 成兄弟目录）
+      - name: Clone pdf2tree
+        uses: actions/checkout@v4
+        with:
+          repository: xgylazy/pdf2tree          #   pdf2tree 仓库 path（改成你的）
+          path: ../pdf2tree
+          token: ${{ secrets.GH_PAT }}           #   私有仓库需要 PAT；公开仓库删这行
+
+      - name: Build standalone bundle
+        run: |
+          test -f VERSION && VERSION=$(cat VERSION) || VERSION="0.1.0"
+          export VERSION
+          ./scripts/build_standalone.sh
+
+      - name: Package tarball
+        run: ./scripts/package.sh
+
+      - name: Compute checksum
+        run: |
+          cd dist
+          sha256sum pdf-distribute-*.tar.gz > SHA256SUMS
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-distribute-${{ github.ref_name }}
+          path: dist/*
+          retention-days: 90
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      #   可选：CI 自动部署到目标机（需要配置 secrets）
+      # - name: Deploy to target machines
+      #   if: startsWith(github.ref, 'refs/tags/') && secrets.SSH_PRIVATE_KEY != ''
+      #   env:
+      #     SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      #   run: [...]
