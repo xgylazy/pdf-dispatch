@@ -12,14 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      #   pdf_datch 依赖的 pdf2tree 工程（CI 里 clone 成兄弟目录）
-      - name: Clone pdf2tree
-        uses: actions/checkout@v4
-        with:
-          repository: xgylazy/pdf2tree          #   pdf2tree 仓库 path（改成你的）
-          path: ../pdf2tree
-          token: ${{ secrets.GH_PAT }}           #   私有仓库需要 PAT；公开仓库删这行
-
       - name: Build standalone bundle
         run: |
           test -f VERSION && VERSION=$(cat VERSION) || VERSION="0.1.0"
