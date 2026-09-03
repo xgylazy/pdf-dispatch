@@ -1,0 +1,15 @@
+# pdf_dis{͏patch} 目标机器列表
+#
+# 每行一个远端主机。worker 自动用本机 CPU 核数作为并发能力上报给调度中心。
+#   user@ip               worker（自动检测）
+#   user@ip app=scheduler  调度中心（通常只一台）
+#
+# 部署： ./deploy.sh servers.txt
+#
+# 示例：
+# admin@10.0.0.10 app=scheduler
+# admin@10.0.0.11 app=worker
+# admin@10.0.0.12 app=worker
+admin@192.192.98.86 app=scheduler
+admin@192.192.98.86 app=worker
+admin@192.192.106 app=worker

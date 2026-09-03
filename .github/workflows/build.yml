@@ -1,0 +1,30 @@
+name: Build Standalone Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build standalone bundle
+        run: |
+          chmod +x scripts/*.sh
+          test -f VERSION && VERSION=$(cat VERSION) || VERSION="0.1.0"
+          export VERSION
+          ./scripts/build_standalone.sh
+
+      - name: Package tarball
+        run: ./scripts/package.sh
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-distribute-${{ github.ref_name }}
+          path: dist/*.tar.gz
+          retention-days: 90

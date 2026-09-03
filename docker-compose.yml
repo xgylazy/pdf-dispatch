@@ -1,0 +1,50 @@
+version: "3.8"
+
+# PDF 分布式解析：调度中心单机 + worker 水平扩展（OCR 并行）。
+# 状态持久化走调度中心本地 data/ 目录（JSON 文件），无需数据库。
+#
+# 启动：  docker-compose up --build --scale worker-v6=2 --scale worker-txt=3
+# 提交：  python examples/submit.py http://localhost:8000 sample.pdf
+# 清理产物： rm -rf data/   (重启即空状态)
+
+volumes:
+  scheduler_data:   # 命名卷：pdfs/jobs/tasks/results 全部持久化在这里
+
+services:
+  scheduler:
+    build: .
+    command: uvicorn scheduler.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - DATA_DIR=/data          # 持久化根目录
+    volumes:
+      - scheduler_data:/data    # PDF + JSON 状态全部落盘到此卷
+    ports:
+      - "8000:8000"
+
+  # ===== OCR worker =====
+  # 需在编译 Docker 镜像时把本 pdf2tree 工程挂进上下文：
+  #   docker build --build-arg PDF2TREE_CONTEXT=../pdf2tree ...
+  # 或在 Dockerfile 同級放一個 pdf2tree/ 目錄作為子模組。
+  worker-v6:
+    build:
+      context: .
+      args:
+        WORKER_KIND: ocr
+    command: uvicorn worker.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - SCHEDULER_URL=http://scheduler:8000
+      - PDF2TREE_PATH=/app/pdf2tree
+      - OCR_MODEL_DIR=/models/official_models    # 容器内离线模型挂载点
+      - CAPACITY=4
+    volumes:
+      - ./pdf2tree:/app/pdf2tree:ro              # pdf2tree 工程（只读）
+      - /opt/pdf_models:/models:ro               # 预下载的 OCR 模型（只读）
+
+  # ===== 纯文本 worker =====
+  # 无 OCR 依赖，仅靠 pymupdf 解析矢量文本页，可大量扩容。
+  worker-txt:
+    build: .
+    command: uvicorn worker.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - SCHEDULER_URL=http://scheduler:8000
+      - CAPACITY=8

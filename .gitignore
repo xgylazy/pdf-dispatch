@@ -1,0 +1,7 @@
+dist/
+build/
+__pycache__/
+*.pyc
+.idea/
+*.zip
+*.tar.gz
