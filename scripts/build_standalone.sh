@@ -20,8 +20,8 @@ mkdir -p "$BUILD_DIR" "$DIST_DIR"/{models,data,logs}
 PY_DIR="${BUILD_DIR}/python311"
 if [[ ! -d "$PY_DIR" ]]; then
   echo "[1/4] 下载 python-build-standalone (Python 3.11) ..."
-  FN="cpython-3.11+20240415-x86_64-unknown-linux-gnu-install_only.tar.gz"
-  curl -fL "https://github.com/indygreg/python-build-standalone/releases/download/20240415/${FN}" \
+  PY_FN="cpython-3.11.9+20240415-x86_64-unknown-linux-gnu-install_only.tar.gz"
+  curl -fL "https://github.com/indygreg/python-build-standalone/releases/download/20240415/${PY_FN}" \
     -o "${BUILD_DIR}/py.tar.gz"
   mkdir -p "$PY_DIR"
   tar -xzf "${BUILD_DIR}/py.tar.gz" -C "$PY_DIR" --strip-components=1
