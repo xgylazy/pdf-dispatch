@@ -46,12 +46,27 @@ for target in "${TARGETS[@]}"; do
 
   ssh $SSH_OPTS "$host" bash <<REMOTE
     set -uo pipefail
-    mkdir -p "$DIR"
-    tar -xzf "/tmp/$(basename "$PKG")" -C "$DIR"
-    cd "$DIR"
+    mkdir -p "$DIR/data/logs"
+    # 停掉旧进程（如果在跑）
+    if [[ -f "$DIR/data/${app}.pid" ]] && kill -0 "\$(cat "$DIR/data/${app}.pid")" 2>/dev/null; then
+      kill "\$(cat "$DIR/data/${app}.pid")" 2>/dev/null || true
+      sleep 1
+    fi
+    tar -xzf "/tmp/$(basename "$PKG")" -C "$DIR" || exit 1
+    cd "$DIR" || exit 1
+    # 清理历史版本/手工部署的残留目录（当前包结构已不含这些）
+    [[ "\$PWD" == "$DIR" ]] && rm -rf venv bin lib site-packages
     $REMOTE_ENV nohup ./start.sh > "$DIR/data/logs/${app}.log" 2>&1 &
     echo \$! > "$DIR/data/${app}.pid"
-    echo "  [started] pid=\$(cat $DIR/data/${app}.pid) $app"
+    sleep 3
+    # 存活检查：启动后 3 秒进程还在才算成功
+    if kill -0 "\$(cat "$DIR/data/${app}.pid")" 2>/dev/null; then
+      echo "  [started] pid=\$(cat "$DIR/data/${app}.pid") $app"
+    else
+      echo "  [FAILED] $app 启动后 3 秒内退出，最近日志："
+      tail -n 20 "$DIR/data/logs/${app}.log" || true
+      exit 1
+    fi
 REMOTE
   echo "<== $host $app ok"; echo
 done

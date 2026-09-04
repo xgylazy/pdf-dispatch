@@ -27,24 +27,33 @@ if [[ ! -d "$PY_DIR" ]]; then
 fi
 "${PY_DIR}/bin/python3" --version
 
-# ── Step 2: pip install 到各自的 site-packages ────────
-echo "[2/3] 装依赖"
+# ── Step 2: 复制自带 Python + 装依赖 ────────────────
+# 服务器可能没有 python3.11（甚至没有 python），且无法联网。
+# 因此把 python-build-standalone 整棵复制进包，依赖直接装进它自己的
+# site-packages —— 包在哪都能跑，不依赖系统 Python。
+echo "[2/3] 复制自带 Python 并安装依赖"
 curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 "${PY_DIR}/bin/python3" /tmp/get-pip.py -q
 
-# worker 全依赖 → dist/standalone-worker/site-packages/
-"${PY_DIR}/bin/python3" -m pip install --no-cache-dir \
-  --prefix="$DIST_WK" \
+for D in "$DIST_WK" "$DIST_SC"; do
+  cp -r "$PY_DIR" "$D/python"
+done
+
+# worker 全依赖 → worker/python 自己的 site-packages
+"${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir \
   httpx pymupdf paddlepaddle paddleocr -q
 
-# scheduler 基础依赖 → dist/standalone-scheduler/site-packages/
-"${PY_DIR}/bin/python3" -m pip install --no-cache-dir \
-  --prefix="$DIST_SC" \
+# scheduler 基础依赖 → scheduler/python 自己的 site-packages
+"${DIST_SC}/python/bin/python3" -m pip install --no-cache-dir \
   httpx pymupdf "uvicorn[standard]" -q
+
+# 验证自带解释器随包可用（防止只拷了依赖没拷解释器的回归）
+"${DIST_SC}/python/bin/python3" -c 'import sys, uvicorn, fastapi; print("bundle python OK:", sys.version)' \
+  || { echo "[error] 自带 Python 验证失败"; exit 1; }
 
 # OCR 模型
 mkdir -p "${DIST_WK}/models"
-PYTHONPATH="$DIST_WK/lib/python3.11/site-packages" "${PY_DIR}/bin/python3" -c "
+"${DIST_WK}/python/bin/python3" -c "
 import os
 os.environ['PADDLE_PDX_CACHE_HOME']='${DIST_WK}/models'
 from paddleocr import PaddleOCR
@@ -63,38 +72,29 @@ echo "[3/3] 组装"
 
 # worker
 cp -r "$PROJ/worker" "$PROJ/shared" "$DIST_WK/"
-rm -rf "$DIST_WK/bin" 2>/dev/null || true
 cat > "$DIST_WK/start.sh" <<'WKSTART'
 #!/bin/bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# 自动收集所有 site-packages 目录（lib/ 和 lib64/ 都找）
-SP=$(for d in "$HERE"/lib/python*/site-packages "$HERE"/lib64/python*/site-packages; do
-       [[ -d "$d" ]] && echo -n "$d:"; done)
-export PYTHONPATH="${SP%:}${PYTHONPATH:+:$PYTHONPATH}"
+# 使用包内自带的 Python，不依赖系统解释器（依赖已装进其 site-packages）
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:8000}"
 export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
 cd "$HERE"
-PY=$(command -v python3.11 || command -v python3)
-exec "$PY" -m worker.main
+exec "$HERE/python/bin/python3.11" -m worker.main
 WKSTART
 
 # scheduler
 cp -r "$PROJ/scheduler" "$PROJ/shared" "$DIST_SC/"
-rm -rf "$DIST_SC/bin" 2>/dev/null || true
 cat > "$DIST_SC/start.sh" <<'SCSTART'
 #!/bin/bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SP=$(for d in "$HERE"/lib/python*/site-packages "$HERE"/lib64/python*/site-packages; do
-       [[ -d "$d" ]] && echo -n "$d:"; done)
-export PYTHONPATH="${SP%:}${PYTHONPATH:+:$PYTHONPATH}"
+# 使用包内自带的 Python，不依赖系统解释器
 export DATA_DIR="${DATA_DIR:-$HERE/data}"
 mkdir -p "$DATA_DIR"
 cd "$HERE"
-PY=$(command -v python3.11 || command -v python3)
-exec "$PY" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
+exec "$HERE/python/bin/python3.11" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
 SCSTART
 
 chmod +x "$DIST_WK/start.sh" "$DIST_SC/start.sh"
