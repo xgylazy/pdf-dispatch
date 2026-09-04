@@ -35,6 +35,8 @@ echo "[2/3] 复制自带 Python 并安装依赖"
 curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 "${PY_DIR}/bin/python3" /tmp/get-pip.py -q
 
+# mkdir -p：pip --prefix 时代会自动建目录，改为整棵复制后必须显式创建
+mkdir -p "$DIST_WK" "$DIST_SC"
 for D in "$DIST_WK" "$DIST_SC"; do
   cp -r "$PY_DIR" "$D/python"
 done
