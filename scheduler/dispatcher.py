@@ -56,18 +56,18 @@ class Dispatcher:
             out.append(b)
         return [b for b in out if b.healthy]
 
-def _pick_backend(self) -> Optional[BackendInfo]:
-    """选一个最闲的健康后端：available = capacity - active_tasks 最大优先。"""
-    cands = [b for b in self.healthy_backends()
-             if b.pdf_capable and b.active_tasks < b.capacity]
-    if not cands:
+    def _pick_backend(self) -> Optional[BackendInfo]:
+        """选一个最闲的健康后端：available = capacity - active_tasks 最大优先。"""
         cands = [b for b in self.healthy_backends()
-                 if b.active_tasks < b.capacity]
-    if not cands:
-        return None
-    if self.policy == DispatchPolicy.LEAST_LOADED:
-        return max(cands, key=lambda c: c.capacity - c.active_tasks)
-    return cands[0]
+                 if b.pdf_capable and b.active_tasks < b.capacity]
+        if not cands:
+            cands = [b for b in self.healthy_backends()
+                     if b.active_tasks < b.capacity]
+        if not cands:
+            return None
+        if self.policy == DispatchPolicy.LEAST_LOADED:
+            return max(cands, key=lambda c: c.capacity - c.active_tasks)
+        return cands[0]
 
     async def _touch_backend(self, backend_id: str, delta: int) -> None:
         b = self._backends.get(backend_id)
