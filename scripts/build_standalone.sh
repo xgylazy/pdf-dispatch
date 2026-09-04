@@ -33,8 +33,9 @@ echo "[2/3] 构建 venv"
 
 # worker：全依赖
 WK_VENV="${BUILD_DIR}/venv-worker"
-"${PY_DIR}/bin/python3" -m venv --copies "$WK_VENV"
-"$WK_VENV/bin/pip" install --upgrade pip -q
+"${PY_DIR}/bin/python3" -m venv --without-pip "$WK_VENV"
+"$WK_VENV/bin/python3" -m ensurepip --upgrade 2>/dev/null || \
+  (curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && "$WK_VENV/bin/python3" /tmp/get-pip.py -q)
 "$WK_VENV/bin/pip" install httpx pymupdf -q
 "$WK_VENV/bin/pip" install paddlepaddle paddleocr -q
 #        worker 启动时找 OCR 模型
@@ -55,8 +56,9 @@ for m in ['PP-OCRv6_medium_det','PP-OCRv6_medium_rec']:
 
 # scheduler：仅基础依赖
 SC_VENV="${BUILD_DIR}/venv-scheduler"
-"${PY_DIR}/bin/python3" -m venv --copies "$SC_VENV"
-"$SC_VENV/bin/pip" install --upgrade pip -q
+"${PY_DIR}/bin/python3" -m venv --without-pip "$SC_VENV"
+"$SC_VENV/bin/python3" -m ensurepip --upgrade 2>/dev/null || \
+  (curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && "$SC_VENV/bin/python3" /tmp/get-pip.py -q)
 "$SC_VENV/bin/pip" install httpx pymupdf uvicorn -q
 
 # ── Step 3: 组装目录 ─────────────────────────────────
