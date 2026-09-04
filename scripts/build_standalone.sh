@@ -27,13 +27,15 @@ echo "  python: $("$PY_DIR/bin/python3" --version)"
 echo "[2/3] 装依赖"
 curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 "${PY_DIR}/bin/python3" /tmp/get-pip.py -q
+"${PY_DIR}/bin/python3" -m pip install --no-cache-dir --upgrade pip -q
 
-WK_SP="${BUILD_DIR}/worker-site"
-mkdir -p "$WK_SP"
-"${PY_DIR}/bin/python3" -m pip install --no-cache-dir --prefix="$WK_SP" httpx pymupdf paddlepaddle paddleocr -q
+# worker：装到 py-build-standalone 自带的 site-packages
+WK_SP="${PY_DIR}/lib/python3.11/site-packages"
+"${PY_DIR}/bin/python3" -m pip install --no-cache-dir httpx pymupdf paddlepaddle paddleocr -q
 
+# 模型
 mkdir -p "${DIST_WK}/models"
-"${PY_DIR}/bin/python3" -c "
+PYTHONPATH="$WK_SP" "${PY_DIR}/bin/python3" -c "
 import os
 os.environ['PADDLE_PDX_CACHE_HOME']='${DIST_WK}/models'
 from paddleocr import PaddleOCR
@@ -47,6 +49,7 @@ for m in ['PP-OCRv6_medium_det','PP-OCRv6_medium_rec']:
 print('models OK')
 "
 
+# scheduler: 独立的精简依赖
 SC_SP="${BUILD_DIR}/scheduler-site"
 mkdir -p "$SC_SP"
 "${PY_DIR}/bin/python3" -m pip install --no-cache-dir --prefix="$SC_SP" httpx pymupdf "uvicorn[standard]" -q
@@ -57,17 +60,17 @@ echo "[3/3] 组装"
 # worker
 mkdir -p "$DIST_WK/data/logs"
 cp -r "$PROJ/worker" "$PROJ/shared" "$DIST_WK/"
-cp -r "$WK_SP/." "$DIST_WK/"
+cp -r "$WK_SP/." "$DIST_WK/site-packages/"
 cat > "$DIST_WK/start.sh" <<'WKSTART'
 #!/bin/bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export PYTHONPATH="$HERE/lib/python3.11/site-packages:$HERE/lib64/python3.11/site-packages:${PYTHONPATH:-}"
+export PYTHONPATH="$HERE/site-packages:${PYTHONPATH:-}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:8000}"
 export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
 cd "$HERE"
-exec python3 -m worker.main
+exec "$HERE/../python-build-standalone/bin/python3" -m worker.main 2>/dev/null || exec python3 -m worker.main
 WKSTART
 
 # scheduler
