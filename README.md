@@ -230,7 +230,7 @@ pymupdf>=23.11
 
 
 github action
-unzip -o pdf-distribute-v0.1.17.zip -d dist/
+unzip -o pdf-distribute-v0.1.18.zip -d dist/
 ./scripts/deploy.sh servers.txt
 curl http://192.192.98.86:8000/docs
 python examples/submit.py http://192.192.98.86:8000 D:/project/py_agent/PP-OCRv6/std_docs/GBT35273b.pdf

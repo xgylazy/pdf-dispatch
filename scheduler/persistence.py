@@ -75,7 +75,7 @@ class FileStore:
         p = self.job_dir / f"{job_id}.json"
         return JobInfo(**json.loads(p.read_text(encoding="utf-8"))) if p.is_file() else None
 
-    def update_job(self, job_id: str, **kw) -> None:
+    async def update_job(self, job_id: str, **kw) -> None:
         job = self.load_job(job_id)
         if not job:
             return
@@ -95,7 +95,7 @@ class FileStore:
         self._atomic_write(p, json.dumps(t.model_dump(),
                                         ensure_ascii=False, indent=2).encode("utf-8"))
 
-    def update_task(self, task_id: str, **kw) -> None:
+    async def update_task(self, task_id: str, **kw) -> None:
         t = self.load_task(task_id)
         if not t:
             return
