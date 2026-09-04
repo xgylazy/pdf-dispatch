@@ -12,14 +12,14 @@ with open(PDF, "rb") as f:
                       data={"split_size": 10})
 r.raise_for_status()
 job = r.json()
-print("job:", job["job_id"], "pages:", job["pages"], "chunks:", job["chunks"])
+print("job:", job.get("job_id"), "pages:", job.get("pages"), "job_id_repeat:", job.get("job_id_repeat"))
 
 status = "pending"
 while status not in ("done", "failed"):
     time.sleep(2)
     s = requests.get(f"{SCHED}/jobs/{job['job_id']}").json()
     status = s["status"]
-    print(f"\r{status:10} chunks_done={s.get('chunks_done', 0)}/{s.get('chunks_num', '?')}", end="", flush=True)
+    print(f"\r{status:10} chunks_done={s.get('chunks_done', 0)}/{s.get('num_chunks', '?')}", end="", flush=True)
 print()
 
 if status == "done":
