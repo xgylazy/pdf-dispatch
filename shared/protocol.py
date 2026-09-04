@@ -79,7 +79,8 @@ class TaskCallback(BaseModel):
     chunk_index: int
     page_start: int
     page_end: int
-    ok: bool
+    backend_id: str = ""           # worker 心跳注册时的 backend_id（用于 active 计数回退）
+    ok: bool = True
     """解析产物，每行一条记录（pdf2tree 的统一行契约）"""
     records: List[dict] = []   # {t:line/table/page, page, y, x, yf, text, ...}
     text_concat: str = ""      # 可选：拼接全文（下游快速索引）
