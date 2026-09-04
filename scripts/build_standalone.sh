@@ -7,7 +7,7 @@ BUILD_DIR="${PROJ}/build"
 DIST_WK="${PROJ}/dist/standalone-worker"
 DIST_SC="${PROJ}/dist/standalone-scheduler"
 VERSION="${VERSION:-$(cat "$PROJ/VERSION" 2>/dev/null || echo 0.1.0)}"
-echo "[build] VERSION=$VERSION
+echo "[build] VERSION=$VERSION"
 
 rm -rf "$BUILD_DIR" "$DIST_WK" "$DIST_SC"
 mkdir -p "$BUILD_DIR"
@@ -21,18 +21,17 @@ if [[ ! -d "$PY_DIR" ]]; then
   mkdir -p "$PY_DIR"
   tar -xzf "${BUILD_DIR}/py.tar.gz" -C "$PY_DIR" --strip-components=1
 fi
-"$PY_DIR/bin/python3" --version
+echo "  python: $("$PY_DIR/bin/python3" --version)"
 
-# ── Step 2: 直接用 get-pip.py + pip install --prefix ──
+# ── Step 2: 直接用 get-pip.py + pip install ──────────
 echo "[2/3] 装依赖"
 curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
-"${PY_DIR}/bin/python3" /tmp/get-pip.py -q --no-warn-script-location
+"${PY_DIR}/bin/python3" /tmp/get-pip.py -q
 
 WK_SP="${BUILD_DIR}/worker-site"
 mkdir -p "$WK_SP"
 "${PY_DIR}/bin/python3" -m pip install --no-cache-dir --prefix="$WK_SP" httpx pymupdf paddlepaddle paddleocr -q
 
-# OCR 模型
 mkdir -p "${DIST_WK}/models"
 "${PY_DIR}/bin/python3" -c "
 import os
@@ -45,6 +44,7 @@ for m in ['PP-OCRv6_medium_det','PP-OCRv6_medium_rec']:
                   use_textline_orientation=False,enable_mkldnn=True)
     except Exception:
         PaddleOCR()
+print('models OK')
 "
 
 SC_SP="${BUILD_DIR}/scheduler-site"
