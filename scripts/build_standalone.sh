@@ -42,16 +42,20 @@ for D in "$DIST_WK" "$DIST_SC"; do
 done
 
 # worker 全依赖 → worker/python 自己的 site-packages
+# 注：fastapi/pydantic 显式列出，不依赖传递安装
 "${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir \
-  httpx pymupdf paddlepaddle paddleocr -q
+  httpx pymupdf fastapi pydantic paddlepaddle paddleocr -q
 
 # scheduler 基础依赖 → scheduler/python 自己的 site-packages
+# 注：scheduler/main.py 需要 fastapi（之前遗漏，导致包里根本没有它）
 "${DIST_SC}/python/bin/python3" -m pip install --no-cache-dir \
-  httpx pymupdf "uvicorn[standard]" -q
+  httpx pymupdf fastapi pydantic "uvicorn[standard]" -q
 
-# 验证自带解释器随包可用（防止只拷了依赖没拷解释器的回归）
-"${DIST_SC}/python/bin/python3" -c 'import sys, uvicorn, fastapi; print("bundle python OK:", sys.version)' \
-  || { echo "[error] 自带 Python 验证失败"; exit 1; }
+# 验证自带解释器随包可用（防止只拷了依赖没拷解释器/漏依赖的回归）
+"${DIST_SC}/python/bin/python3" -c 'import sys, uvicorn, fastapi, pymupdf, httpx; print("bundle python OK:", sys.version)' \
+  || { echo "[error] scheduler 自带 Python 验证失败"; exit 1; }
+"${DIST_WK}/python/bin/python3" -c 'import sys, httpx, pymupdf, fastapi, pydantic, paddleocr; print("bundle python OK:", sys.version)' \
+  || { echo "[error] worker 自带 Python 验证失败"; exit 1; }
 
 # OCR 模型
 mkdir -p "${DIST_WK}/models"
@@ -79,6 +83,8 @@ cat > "$DIST_WK/start.sh" <<'WKSTART'
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # 使用包内自带的 Python，不依赖系统解释器（依赖已装进其 site-packages）
+# 包内只有 worker/ 和 shared/，引擎模块默认值 pdf_dispatch.worker.engine 解析不到
+export ENGINE_MODULE="${ENGINE_MODULE:-worker.engine}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:8000}"
 export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
