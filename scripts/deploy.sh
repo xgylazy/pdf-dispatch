@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-$(cat VERSION 2>/dev/null || echo 0.1.0)}"
+VERSION="${VERSION:-$(cat VERSION 2>/dev/null || echo 0.1.6)}"
 PKG_WK="dist/pdf-distribute-worker-${VERSION}.tar.gz"
 PKG_SC="dist/pdf-distribute-scheduler-${VERSION}.tar.gz"
 DIR_WK="/opt/pdf-worker"
