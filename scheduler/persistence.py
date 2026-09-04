@@ -95,6 +95,14 @@ class FileStore:
         self._atomic_write(p, json.dumps(t.model_dump(),
                                         ensure_ascii=False, indent=2).encode("utf-8"))
 
+    def update_task(self, task_id: str, **kw) -> None:
+        t = self.load_task(task_id)
+        if not t:
+            return
+        for k, v in kw.items():
+            setattr(t, k, v)
+        self.save_task(t)
+
     def save_task_result(self, task_id: str, *, ok: bool, records: list,
                          text_concat: str, error: str | None, parse_ms: int) -> None:
         p = self._task_path(self.task_dir, task_id)
