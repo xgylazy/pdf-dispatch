@@ -89,7 +89,7 @@ async def _heartbeat_loop() -> None:
 # ---------------------------------------------------------------------------
 
 async def _tick() -> bool:
-    nonlocal _active_tasks
+    global _active_tasks
     async with httpx.AsyncClient(timeout=120) as cli:
         r = await cli.post(f"{SCHEDULER_URL}/internal/claim",
                            json={"backend_id": BACKEND_ID})
