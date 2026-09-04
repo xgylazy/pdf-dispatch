@@ -9,6 +9,10 @@ DIST_SC="${PROJ}/dist/standalone-scheduler"
 VERSION="${VERSION:-$(cat "$PROJ/VERSION" 2>/dev/null || echo 0.1.0)}"
 echo "[build] VERSION=$VERSION"
 
+echo "════════════════════════════════════════════════════"
+echo "  pdf-dispatch 绿色包 v${VERSION}"
+echo "════════════════════════════════════════════════════"
+
 rm -rf "$BUILD_DIR" "$DIST_WK" "$DIST_SC"
 mkdir -p "$BUILD_DIR"
 
@@ -21,21 +25,26 @@ if [[ ! -d "$PY_DIR" ]]; then
   mkdir -p "$PY_DIR"
   tar -xzf "${BUILD_DIR}/py.tar.gz" -C "$PY_DIR" --strip-components=1
 fi
-echo "  python: $("$PY_DIR/bin/python3" --version)"
+"${PY_DIR}/bin/python3" --version
 
-# ── Step 2: 直接用 get-pip.py + pip install ──────────
+# ── Step 2: pip install 到各自的 site-packages ────────
 echo "[2/3] 装依赖"
 curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 "${PY_DIR}/bin/python3" /tmp/get-pip.py -q
-"${PY_DIR}/bin/python3" -m pip install --no-cache-dir --upgrade pip -q
 
-# worker：装到 py-build-standalone 自带的 site-packages
-WK_SP="${PY_DIR}/lib/python3.11/site-packages"
-"${PY_DIR}/bin/python3" -m pip install --no-cache-dir httpx pymupdf paddlepaddle paddleocr -q
+# worker 全依赖 → dist/standalone-worker/site-packages/
+"${PY_DIR}/bin/python3" -m pip install --no-cache-dir \
+  --prefix="$DIST_WK" \
+  httpx pymupdf paddlepaddle paddleocr -q
 
-# 模型
+# scheduler 基础依赖 → dist/standalone-scheduler/site-packages/
+"${PY_DIR}/bin/python3" -m pip install --no-cache-dir \
+  --prefix="$DIST_SC" \
+  httpx pymupdf "uvicorn[standard]" -q
+
+# OCR 模型
 mkdir -p "${DIST_WK}/models"
-PYTHONPATH="$WK_SP" "${PY_DIR}/bin/python3" -c "
+PYTHONPATH="$DIST_WK/lib/python3.11/site-packages" "${PY_DIR}/bin/python3" -c "
 import os
 os.environ['PADDLE_PDX_CACHE_HOME']='${DIST_WK}/models'
 from paddleocr import PaddleOCR
@@ -49,44 +58,46 @@ for m in ['PP-OCRv6_medium_det','PP-OCRv6_medium_rec']:
 print('models OK')
 "
 
-# scheduler: 独立的精简依赖
-SC_SP="${BUILD_DIR}/scheduler-site"
-mkdir -p "$SC_SP"
-"${PY_DIR}/bin/python3" -m pip install --no-cache-dir --prefix="$SC_SP" httpx pymupdf "uvicorn[standard]" -q
-
-# ── Step 3: 组装 green 包 ────────────────────────────
+# ── Step 3: 组装代码 + start.sh ──────────────────────
 echo "[3/3] 组装"
 
 # worker
-mkdir -p "$DIST_WK/data/logs"
 cp -r "$PROJ/worker" "$PROJ/shared" "$DIST_WK/"
-cp -r "$WK_SP/." "$DIST_WK/site-packages/"
+rm -rf "$DIST_WK/bin" 2>/dev/null || true
 cat > "$DIST_WK/start.sh" <<'WKSTART'
 #!/bin/bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export PYTHONPATH="$HERE/site-packages:${PYTHONPATH:-}"
+# 自动收集所有 site-packages 目录（lib/ 和 lib64/ 都找）
+SP=$(for d in "$HERE"/lib/python*/site-packages "$HERE"/lib64/python*/site-packages; do
+       [[ -d "$d" ]] && echo -n "$d:"; done)
+export PYTHONPATH="${SP%:}${PYTHONPATH:+:$PYTHONPATH}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:8000}"
 export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
 cd "$HERE"
-exec "$HERE/../python-build-standalone/bin/python3" -m worker.main 2>/dev/null || exec python3 -m worker.main
+PY=$(command -v python3.11 || command -v python3)
+exec "$PY" -m worker.main
 WKSTART
 
 # scheduler
-mkdir -p "$DIST_SC/data/logs"
 cp -r "$PROJ/scheduler" "$PROJ/shared" "$DIST_SC/"
-cp -r "$SC_SP/." "$DIST_SC/"
+rm -rf "$DIST_SC/bin" 2>/dev/null || true
 cat > "$DIST_SC/start.sh" <<'SCSTART'
 #!/bin/bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export PYTHONPATH="$HERE/lib/python3.11/site-packages:$HERE/lib64/python3.11/site-packages:${PYTHONPATH:-}"
+SP=$(for d in "$HERE"/lib/python*/site-packages "$HERE"/lib64/python*/site-packages; do
+       [[ -d "$d" ]] && echo -n "$d:"; done)
+export PYTHONPATH="${SP%:}${PYTHONPATH:+:$PYTHONPATH}"
 export DATA_DIR="${DATA_DIR:-$HERE/data}"
 mkdir -p "$DATA_DIR"
 cd "$HERE"
-exec python3 -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
+PY=$(command -v python3.11 || command -v python3)
+exec "$PY" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
 SCSTART
 
 chmod +x "$DIST_WK/start.sh" "$DIST_SC/start.sh"
-echo "[done] worker=$DIST_WK scheduler=$DIST_SC"
+echo "[done]"
+echo "  worker:    $DIST_WK ($(du -sh "$DIST_WK" | cut -f1))"
+echo "  scheduler: $DIST_SC ($(du -sh "$DIST_SC" | cut -f1))"
