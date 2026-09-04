@@ -110,7 +110,10 @@ class Dispatcher:
             except FileNotFoundError:
                 continue
             self._num_chunks[job_id] = job.num_chunks
-            self._chunks_done[job_id] = 0
+            # 启动时从磁盘统计已完成的 chunk，避免重启后计数器归零
+            done = sum(1 for t in self.store.tasks_of(job_id)
+                       if t.status == TaskStatus.DONE)
+            self._chunks_done[job_id] = done
             for td in self.store.pending_tasks_of(job_id):
                 self._pending.append(
                     (job_id, Chunk(index=td["chunk_index"],

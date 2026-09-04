@@ -12,7 +12,7 @@ with open(PDF, "rb") as f:
                       data={"split_size": 10})
 r.raise_for_status()
 job = r.json()
-print("job:", job.get("job_id"), "pages:", job.get("pages"), "job_id_repeat:", job.get("job_id_repeat"))
+print("job:", job.get("job_id"), "pages:", job.get("total_pages"), "chunks:", job.get("num_chunks"))
 
 status = "pending"
 while status not in ("done", "failed"):
