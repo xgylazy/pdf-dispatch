@@ -93,6 +93,8 @@ class TaskCallback(BaseModel):
 class Heartbeat(BaseModel):
     backend_id: str
     url: str                       # worker 的对外地址（http://ip:port）
+    ip: str = ""                   # worker 自身 IP（运维可读）
+    pid: int = 0                    # worker 进程 PID
     capacity: int = 4              # 并发槽位数
     active_tasks: int = 0          # 当前正在跑的任务数
     pdf_capable: bool = True       # 是否部署了 paddleocr（扫描页需要）
@@ -101,6 +103,8 @@ class Heartbeat(BaseModel):
 class BackendInfo(BaseModel):
     backend_id: str
     url: str
+    ip: str = ""
+    pid: int = 0
     capacity: int = 4
     active_tasks: int = 0
     pdf_capable: bool = True

@@ -42,10 +42,11 @@ class Dispatcher:
     # ---------- 后端 ----------
 
     async def register(self, hb: Heartbeat, caller_ip: str = "") -> None:
-        # 用 caller_ip 拼进 key，避免不同机器 hostname 相同时 backend_id 碰撞
-        key = f"{hb.backend_id}@{caller_ip}" if caller_ip else hb.backend_id
+        # backend_id 由 worker 用 UUID 自生成，保证全局唯一；
+        # 拼上 caller_ip 是为了兜底手工部署时两个 worker 配置了相同 BACKEND_ID 的情况。
+        key = f"{hb.backend_id}@{caller_ip}" if caller_ip and caller_ip not in hb.backend_id else hb.backend_id
         self._backends[key] = BackendInfo(
-            backend_id=key, url=hb.url,
+            backend_id=hb.backend_id, url=hb.url, ip=hb.ip, pid=hb.pid,
             capacity=hb.capacity, active_tasks=hb.active_tasks,
             pdf_capable=hb.pdf_capable, last_heartbeat=time.time(),
             healthy=True)
@@ -198,6 +199,8 @@ class Dispatcher:
         for b in self.healthy_backends():
             backends.append({
                 "backend_id": b.backend_id,
+                "ip": b.ip,
+                "pid": b.pid,
                 "active_tasks": b.active_tasks,
                 "capacity": b.capacity,
                 "healthy": b.healthy,

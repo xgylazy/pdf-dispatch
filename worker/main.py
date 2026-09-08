@@ -21,6 +21,7 @@ import os
 import signal
 import sys
 import time
+import uuid
 
 import httpx
 
@@ -41,11 +42,28 @@ log = logging.getLogger("worker")
 # 配置
 # ---------------------------------------------------------------------------
 SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://localhost:28765")
-BACKEND_ID = os.getenv("BACKEND_ID", f"worker-{os.getpid()}")
+BACKEND_ID = os.getenv("BACKEND_ID") or f"worker-{uuid.uuid4().hex[:12]}"
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "1.0"))
 HEARTBEAT_INTERVAL = float(os.getenv("HEARTBEAT_INTERVAL", "10.0"))
 ENGINE_MODULE = os.getenv("ENGINE_MODULE", "pdf_dispatch.worker.engine")
 CAPACITY = int(os.getenv("CAPACITY") or (os.cpu_count() or 4))
+
+WORKER_PID = os.getpid()
+_WORKER_IP = ""
+
+def _get_worker_ip() -> str:
+    global _WORKER_IP
+    if _WORKER_IP:
+        return _WORKER_IP
+    s = __import__("socket").socket(__import__("socket").AF_INET, __import__("socket").SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        _WORKER_IP = s.getsockname()[0]
+    except OSError:
+        _WORKER_IP = "127.0.0.1"
+    finally:
+        s.close()
+    return _WORKER_IP
 
 _active_tasks: int = 0
 _lock = asyncio.Lock()
@@ -74,7 +92,7 @@ async def _heartbeat_loop() -> None:
                 async with _lock:
                     current_active = _active_tasks
                 await cli.post(f"{SCHEDULER_URL}/internal/heartbeat",
-                               json={"backend_id": BACKEND_ID,
+                               json={"backend_id": BACKEND_ID, "ip": _get_worker_ip(), "pid": WORKER_PID,
                                      "url": BACKEND_ID,
                                      "capacity": CAPACITY,
                                      "active_tasks": current_active,
@@ -92,7 +110,7 @@ async def _tick() -> bool:
     global _active_tasks
     async with httpx.AsyncClient(timeout=120) as cli:
         r = await cli.post(f"{SCHEDULER_URL}/internal/claim",
-                           json={"backend_id": BACKEND_ID})
+                           json={"backend_id": BACKEND_ID, "ip": _get_worker_ip(), "pid": WORKER_PID})
         if r.status_code in (204, 404):
             return False
         if r.status_code != 200:
@@ -122,7 +140,8 @@ async def _tick() -> bool:
 
         cb = {"task_id": task_id, "job_id": body["job_id"],
               "chunk_index": body["chunk_index"], "page_start": page_start,
-              "page_end": page_end, "backend_id": BACKEND_ID,
+                    "page_end": page_end, "backend_id": BACKEND_ID,
+                    "ip": _get_worker_ip(), "pid": WORKER_PID,
               "ok": ok, "records": records, "error": err, "parse_ms": parse_ms}
         try:
             await cli.post(f"{SCHEDULER_URL}/internal/task_done", json=cb)
