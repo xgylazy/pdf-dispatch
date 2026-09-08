@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 
 import pymupdf
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 
 from scheduler.dispatcher import Dispatcher
@@ -87,6 +87,7 @@ async def task_done(cb: TaskCallback):
 
 
 @app.post("/internal/heartbeat")
-async def heartbeat(hb: Heartbeat):
-    await dispatcher.register(hb)
+async def heartbeat(hb: Heartbeat, request: Request):
+    caller_ip = request.client.host if request.client else ""
+    await dispatcher.register(hb, caller_ip=caller_ip)
     return {"ok": True}

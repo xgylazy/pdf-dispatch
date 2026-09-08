@@ -41,9 +41,11 @@ class Dispatcher:
 
     # ---------- 后端 ----------
 
-    async def register(self, hb: Heartbeat) -> None:
-        self._backends[hb.backend_id] = BackendInfo(
-            backend_id=hb.backend_id, url=hb.url,
+    async def register(self, hb: Heartbeat, caller_ip: str = "") -> None:
+        # 用 caller_ip 拼进 key，避免不同机器 hostname 相同时 backend_id 碰撞
+        key = f"{hb.backend_id}@{caller_ip}" if caller_ip else hb.backend_id
+        self._backends[key] = BackendInfo(
+            backend_id=key, url=hb.url,
             capacity=hb.capacity, active_tasks=hb.active_tasks,
             pdf_capable=hb.pdf_capable, last_heartbeat=time.time(),
             healthy=True)
