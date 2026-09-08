@@ -56,6 +56,8 @@ for target in "${TARGETS[@]}"; do
     cd "$DIR" || exit 1
     # 清理历史版本/手工部署的残留目录（当前包结构已不含这些）
     [[ "\$PWD" == "$DIR" ]] && rm -rf venv bin lib site-packages
+    # 新部署清理旧的 jobs/tasks，避免 scheduler recover() 重新载入历史状态
+    rm -f "$DIR"/data/jobs/*.json "$DIR"/data/tasks/*.json
     $REMOTE_ENV nohup ./start.sh > "$DIR/data/logs/${app}.log" 2>&1 &
     echo \$! > "$DIR/data/${app}.pid"
     sleep 3
