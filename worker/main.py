@@ -40,7 +40,7 @@ log = logging.getLogger("worker")
 # ---------------------------------------------------------------------------
 # 配置
 # ---------------------------------------------------------------------------
-SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://localhost:8000")
+SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://localhost:28765")
 BACKEND_ID = os.getenv("BACKEND_ID", f"worker-{os.getpid()}")
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "1.0"))
 HEARTBEAT_INTERVAL = float(os.getenv("HEARTBEAT_INTERVAL", "10.0"))

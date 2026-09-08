@@ -14,7 +14,7 @@ DIR_SC="/opt/pdf-scheduler"
 SSH_OPTS="${SSH_OPTS:--i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=10}"
 mapfile -t TARGETS < <(grep -vE '^\s*#|^\s*$' "$1")
 
-# 从 servers.txt 里找 scheduler IP，worker 自动连这个 IP 的 8000 端口
+# 从 servers.txt 里找 scheduler IP，worker 自动连这个 IP
 SCHEDULER_IP=""
 for t in "${TARGETS[@]}"; do
   host="${t%% *}"; rest="${t#* }"
@@ -23,7 +23,7 @@ for t in "${TARGETS[@]}"; do
   done
 done
 [[ -n "$SCHEDULER_IP" ]] || { echo "[ERROR] servers.txt 里没找到 app=scheduler 的行"; exit 2; }
-export SCHEDULER_URL="http://${SCHEDULER_IP}:8000"
+export SCHEDULER_URL="http://${SCHEDULER_IP}:28765"
 echo "[deploy] scheduler=$SCHEDULER_URL  targets=${#TARGETS[@]}"
 for t in "${TARGETS[@]}"; do echo "  $t"; done; echo
 

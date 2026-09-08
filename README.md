@@ -5,7 +5,7 @@ PDF 解析分布式调度系统：调度中心接收 PDF → 分页切片 → �
 ## 架构
 
 ```
-  client ──submit PDF──▶ 调度中心 (:8000)
+  client ──submit PDF──▶ 调度中心 (:28765)
                             │
         ┌───────────────────┼───────────────────┐
         │ claim (pull)      │ claim (pull)      │ claim (pull)
@@ -15,7 +15,7 @@ PDF 解析分布式调度系统：调度中心接收 PDF → 分页切片 → �
     无端口)              无端口)              无端口)
 ```
 
-- **调度中心**（scheduler）：FastAPI + uvicorn，端口 8000。内存队列 + **本地文件持久化**（`data/jobs/` `data/tasks/` `data/pdfs/`，无数据库）。
+- **调度中心**（scheduler）：FastAPI + uvicorn，端口 28765。内存队列 + **本地文件持久化**（`data/jobs/` `data/tasks/` `data/pdfs/`，无数据库）。
 - **worker**：纯 asyncio 事件循环（无端口、无 FastAPI）。自动感知本机 CPU 核数作为并发能力上报；heartbeat 周期上报空闲度；空闲时主动 pull 任务、完成后 push 结果。
 - **完全异步**：调度中心全程被动接受请求；worker 主动 pull + push。两者解耦，任意一方重启不影响另一方。
 
@@ -60,7 +60,7 @@ PDF 解析分布式调度系统：调度中心接收 PDF → 分页切片 → �
 
 ```bash
 docker-compose up --build --scale worker-v6=2
-python examples/submit.py http://localhost:8000 doc.pdf
+python examples/submit.py http://localhost:28765 doc.pdf
 ```
 
 ### 模式 B：物理机绿色包（生产、目标机零预装零网络）
@@ -103,8 +103,8 @@ vim servers.txt
 
 ```bash
 docker build -t pdf-dispatch .
-docker run -d -p 8000:8000 -v $PWD/data:/data pdf-dispatch \
-    uvicorn scheduler.main:app --host 0.0.0.0 --port 8000
+docker run -d -p 28765:28765 -v $PWD/data:/data pdf-dispatch \
+uvicorn scheduler.main:app --host 0.0.0.0 --port 28765
 ```
 
 ### 模式 D：GitHub Actions 自动构建（目标机零 Linux 构建环境）
@@ -140,19 +140,19 @@ tar -xzf pdf-distribute-0.1.0.tar.gz -C .
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `DATA_DIR` | `./data` | jobs/tasks/pdfs/results 持久化根目录 |
-| `PORT` | 8000 | HTTP 端口 |
+| `PORT` | 28765 | HTTP 端口 |
 
 ### Worker
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `SCHEDULER_URL` | http://localhost:8000 | 调度中心地址 |
+| `SCHEDULER_URL` | http://localhost:28765 | 调度中心地址 |
 | `PDF2TREE_PATH` | 空 | 指向 pdf2tree 工程根即启用 OCR+矢量双路；留空退化为纯 pymupdf |
 | `OCR_MODEL_DIR` | 空 | 离线 OCR 模型目录（指向 `models/official_models/`） |
 | `CAPACITY` | 0（自动=CPU 核数） | 手动覆盖并发能力 |
 | `POLL_INTERVAL` | 1.0 | 无任务时 claim 轮询间隔（秒） |
 | `HEARTBEAT_INTERVAL` | 10.0 | 心跳上报间隔（秒） |
-| `PORT` | 8000 | HTTP 端口 |
+| `PORT` | 28765 | HTTP 端口 |
 
 ---
 
@@ -180,15 +180,15 @@ tar -xzf pdf-distribute-0.1.0.tar.gz -C .
 
 ```bash
 # 提交 PDF → 拿 job_id
-$ curl -F "file=@/path/to/GB/T35273.pdf" http://localhost:8000/jobs
+$ curl -F "file=@/path/to/GB/T35273.pdf" http://localhost:28765/jobs
 {"job_id": "a1b2c3...", "pages": 40, "chunks": 4}
 
 # 轮询进度
-$ curl http://localhost:8000/jobs/a1b2c3...
+$ curl http://localhost:28765/jobs/a1b2c3...
 {"status": "running", "chunks_done": 2, "num_chunks": 4, ...}
 
 # 完成后下载行记录
-$ curl http://localhost:8000/jobs/a1b2c3.../result -o result.jsonl
+$ curl http://localhost:28765/jobs/a1b2c3.../result -o result.jsonl
 $ wc -l result.jsonl        # 例如 1177 行
 ```
 
@@ -224,13 +224,13 @@ pymupdf>=23.11
 | --- | --- | --- |
 | worker 日志报 `RuntimeError: 离线 OCR 启动失败` | `OCR_MODEL_DIR` 指向目录缺模型文件 | 检查 `models/official_models/<model_name>/inference.pdiparams` 是否存在 |
 | `PADDLE_PDX_CACHE_HOME` 设后仍下载 | 该环境变量被其他环境变量覆盖 | 在 start_worker.sh 末尾加 `echo $PADDLE_PDX_CACHE_HOME` 验证 |
-| worker 拉不到任务 | `SCHEDULER_URL` 写错 / 调度中心未启动 | `curl http://<scheduler>:8000/internal/claim` 测通 |
+| worker 拉不到任务 | `SCHEDULER_URL` 写错 / 调度中心未启动 | `curl http://<scheduler>:28765/internal/claim` 测通 |
 | deploy.sh 报 `PID 文件存在但进程不存在` | 上次 worker 被 kill -9 没清理 | `start_worker.sh` 已处理：`kill -0` 检测活才 kill |
 </｜DSML｜parameter>
 
 
 github action
-unzip -o pdf-distribute-v0.1.21.zip -d dist/
+unzip -o pdf-distribute-v0.1.23.zip -d dist/
 ./scripts/deploy.sh servers.txt
-curl http://192.192.98.86:8000/docs
-python examples/submit.py http://192.192.98.86:8000 D:/project/py_agent/PP-OCRv6/std_docs/GBT35273b.pdf
+curl http://192.192.98.86:28765/docs
+python examples/submit.py http://192.192.98.86:28765 D:/project/py_agent/PP-OCRv6/std_docs/GBT35273b.pdf

@@ -4,7 +4,7 @@ version: "3.8"
 # 状态持久化走调度中心本地 data/ 目录（JSON 文件），无需数据库。
 #
 # 启动：  docker-compose up --build --scale worker-v6=2 --scale worker-txt=3
-# 提交：  python examples/submit.py http://localhost:8000 sample.pdf
+# 提交：  python examples/submit.py http://localhost:28765 sample.pdf
 # 清理产物： rm -rf data/   (重启即空状态)
 
 volumes:
@@ -13,13 +13,13 @@ volumes:
 services:
   scheduler:
     build: .
-    command: uvicorn scheduler.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn scheduler.main:app --host 0.0.0.0 --port 28765
     environment:
       - DATA_DIR=/data          # 持久化根目录
     volumes:
       - scheduler_data:/data    # PDF + JSON 状态全部落盘到此卷
     ports:
-      - "8000:8000"
+      - "28765:28765"
 
   # ===== OCR worker =====
   # 需在编译 Docker 镜像时把本 pdf2tree 工程挂进上下文：
@@ -30,9 +30,9 @@ services:
       context: .
       args:
         WORKER_KIND: ocr
-    command: uvicorn worker.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn worker.main:app --host 0.0.0.0 --port 28765
     environment:
-      - SCHEDULER_URL=http://scheduler:8000
+      - SCHEDULER_URL=http://scheduler:28765
       - PDF2TREE_PATH=/app/pdf2tree
       - OCR_MODEL_DIR=/models/official_models    # 容器内离线模型挂载点
       - CAPACITY=4
@@ -44,7 +44,7 @@ services:
   # 无 OCR 依赖，仅靠 pymupdf 解析矢量文本页，可大量扩容。
   worker-txt:
     build: .
-    command: uvicorn worker.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn worker.main:app --host 0.0.0.0 --port 28765
     environment:
-      - SCHEDULER_URL=http://scheduler:8000
+      - SCHEDULER_URL=http://scheduler:28765
       - CAPACITY=8

@@ -4,7 +4,7 @@ import sys
 import time
 import requests
 
-SCHED = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
+SCHED = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:28765"
 PDF = sys.argv[2] if len(sys.argv) > 2 else r"D:\project\py_agent\PP-OCRv6\std_docs\GBT35273b.pdf"
 
 with open(PDF, "rb") as f:

@@ -85,7 +85,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # 包内只有 worker/ 和 shared/，引擎模块默认值 pdf_dispatch.worker.engine 解析不到
 export ENGINE_MODULE="${ENGINE_MODULE:-worker.engine}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
-export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:8000}"
+export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:28765}"
 export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
 cd "$HERE"
 exec "$HERE/python/bin/python3.11" -m worker.main
@@ -101,7 +101,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export DATA_DIR="${DATA_DIR:-$HERE/data}"
 mkdir -p "$DATA_DIR"
 cd "$HERE"
-exec "$HERE/python/bin/python3.11" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
+exec "$HERE/python/bin/python3.11" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-28765}"
 SCSTART
 
 chmod +x "$DIST_WK/start.sh" "$DIST_SC/start.sh"
