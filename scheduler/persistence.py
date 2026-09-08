@@ -149,6 +149,15 @@ class FileStore:
                     seen.add(job_id)
                     yield job_id
 
+    def list_jobs(self) -> List[JobInfo]:
+        out: List[JobInfo] = []
+        for p in sorted(self.job_dir.glob("*.json")):
+            try:
+                out.append(JobInfo(**json.loads(p.read_text(encoding="utf-8"))))
+            except Exception:
+                continue
+        return out
+
     def pending_tasks_of(self, job_id: str) -> List[dict]:
         """返回 job_id 下所有未完成的 task dict（含 task_id / chunk_index / page_*）."""
         out: List[dict] = []

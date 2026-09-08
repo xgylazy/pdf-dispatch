@@ -53,6 +53,12 @@ async def get_job(job_id: str):
     return job.model_dump()
 
 
+@app.get("/stats")
+async def stats():
+    """系统全貌：多少 job、什么状态、多少分片正在跑 / 等待 / 完成、worker 负载。"""
+    return await dispatcher.stats()
+
+
 @app.get("/jobs/{job_id}/result", response_class=PlainTextResponse)
 async def get_result(job_id: str):
     job = await dispatcher.job_status(job_id)

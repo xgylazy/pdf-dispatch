@@ -180,6 +180,50 @@ class Dispatcher:
 
     # ---------- 查询 ----------
 
+    async def stats(self) -> dict:
+        jobs = self.store.list_jobs()
+        by_status: dict[str, int] = {}
+        for j in jobs:
+            by_status[j.status.value] = by_status.get(j.status.value, 0) + 1
+        # 分片维度：pending = 在内存队列里等 claim；done = 已完成回调；
+        # executing = 已 claim 出队但未回调（= pending_least_loaded 之外的已分配）。
+        # 用总 - pending - done 近似（内存池 + 已持久化_DONE 两处之和守恒）。
+        total_chunks = sum(self._num_chunks.values())
+        pending = len(self._pending)
+        done = sum(self._chunks_done.values())
+        executing = max(0, total_chunks - pending - done)
+        backends = []
+        for b in self.healthy_backends():
+            backends.append({
+                "backend_id": b.backend_id,
+                "active_tasks": b.active_tasks,
+                "capacity": b.capacity,
+                "healthy": b.healthy,
+            })
+        return {
+            "jobs": {
+                "total": len(jobs),
+                "by_status": by_status,
+                "items": [
+                    {
+                        "job_id": j.job_id,
+                        "status": j.status.value,
+                        "num_chunks": j.num_chunks,
+                        "chunks_done": j.chunks_done,
+                        "filename": j.filename,
+                    }
+                    for j in sorted(jobs, key=lambda x: x.created_at, reverse=True)
+                ],
+            },
+            "chunks": {
+                "total": total_chunks,
+                "pending": pending,
+                "executing": executing,
+                "done": done,
+            },
+            "backends": backends,
+        }
+
     async def job_status(self, job_id: str) -> Optional[JobInfo]:
         return self.store.load_job(job_id)
 
