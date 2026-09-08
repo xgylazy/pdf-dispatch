@@ -86,7 +86,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export ENGINE_MODULE="${ENGINE_MODULE:-worker.engine}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:28765}"
-export BACKEND_ID="${BACKEND_ID:-$(hostname)-worker}"
 cd "$HERE"
 exec "$HERE/python/bin/python3.11" -m worker.main
 WKSTART
