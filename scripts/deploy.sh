@@ -26,8 +26,9 @@ if [[ ! -f "$PKG_WK" || ! -f "$PKG_SC" ]]; then
     echo "      bash scripts/deploy.sh servers.txt"
     exit 2
   fi
-  echo "==> [deploy] 找到 $ZIP，解压中..."
-  unzip -o "$ZIP" -d "$(dirname "$ZIP")/"
+  echo "==> [deploy] 找到 $ZIP，解压到 dist/..."
+  mkdir -p dist
+  unzip -o "$ZIP" -d dist/
   [[ -f "$PKG_WK" && -f "$PKG_SC" ]] || { echo "[ERROR] 解压后仍缺少 tarball"; exit 2; }
 fi
 echo "==> [deploy] 产物就绪：$PKG_WK + $PKG_SC"
