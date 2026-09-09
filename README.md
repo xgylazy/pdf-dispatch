@@ -230,7 +230,6 @@ pymupdf>=23.11
 
 
 github action
-unzip -o pdf-distribute-v0.1.36.zip -d dist/
 ./scripts/deploy.sh servers.txt
 curl http://192.192.98.86:28765/docs
 curl http://192.192.98.86:28765/stats
