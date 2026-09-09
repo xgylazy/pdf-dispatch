@@ -129,7 +129,10 @@ async def _tick() -> bool:
         piece = extract_page_range(pdf_bytes, page_start, page_end)
         t0 = time.time()
         try:
-            records = _engine_parse_pdf(piece, page_offset=page_start - 1)
+            # 解析放到线程里跑：parse_pdf 是同步重计算（OCR 一页可达分钟级），
+            # 直接在事件循环里跑会阻塞心跳，导致调度中心把本 worker 标记为不健康
+            records = await asyncio.to_thread(
+                _engine_parse_pdf, piece, page_offset=page_start - 1)
             ok, err = True, None
             log.info("parsed %s OK (%d records, %.1fs)",
                      task_id, len(records), time.time() - t0)

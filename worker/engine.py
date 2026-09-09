@@ -245,14 +245,20 @@ def _ocr_page_records(pno: int, page: pymupdf.Page, ocr) -> List[dict]:
             if not txt:
                 continue
             poly = polys[i] if i < len(polys) else None
-            if poly and len(poly) >= 2:
-                xs = [p[0] for p in poly]
-                ys = [p[1] for p in poly]
-                x0 = min(xs) / pix.width * pw
-                y0 = min(ys) / pix.height * ph
-            else:
-                x0 = 0.0
-                y0 = 0.0
+            x0, y0 = 0.0, 0.0
+            if poly is not None:
+                try:
+                    # poly 形状不定：ndarray (4,2)/(N,4,2) 多边形或 (4,)=[x0,y0,x1,y1] box，
+                    # 不能直接 `if poly`（多元素 ndarray 会抛 ValueError）
+                    arr = np.asarray(poly, dtype=float)
+                    if arr.ndim == 2 and arr.shape[0] >= 2:
+                        x0 = float(arr[:, 0].min()) / pix.width * pw
+                        y0 = float(arr[:, 1].min()) / pix.height * ph
+                    elif arr.ndim == 1 and arr.size >= 4:
+                        x0 = float(arr[0]) / pix.width * pw
+                        y0 = float(arr[1]) / pix.height * ph
+                except Exception:
+                    x0, y0 = 0.0, 0.0
             recs.append(_line(pno, y0, x0, y0 / ph, txt,
                              label="text",
                              size=None, bold=None))

@@ -81,16 +81,23 @@ echo "[3/3] 组装"
 
 # worker
 cp -r "$PROJ/worker" "$PROJ/shared" "$DIST_WK/"
+# 打包构建机上的 libgomp（paddle 硬依赖，目标机内网无法 yum/apt 安装）
+mkdir -p "$DIST_WK/python/lib"
+for LG in /usr/lib/x86_64-linux-gnu/libgomp.so.1 /lib64/libgomp.so.1; do
+    if [ -e "$LG" ]; then cp -L "$LG" "$DIST_WK/python/lib/"; break; fi
+done
 cat > "$DIST_WK/start.sh" <<'WKSTART'
 #!/bin/bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # 使用包内自带的 Python，不依赖系统解释器（依赖已装进其 site-packages）
-# 包内只有 worker/ 和 shared/，引擎模块默认值 pdf_dispatch.worker.engine 解析不到 
+# 包内只有 worker/ 和 shared/，引擎模块默认值 pdf_dispatch.worker.engine 解析不到
 export ENGINE_MODULE="${ENGINE_MODULE:-worker.engine}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export OCR_MODEL_DIR="$HERE/models/official_models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:28765}"
+# 包内自带 libgomp，避免目标机缺 GNU OpenMP 运行库导致 paddle 无法 import
+export LD_LIBRARY_PATH="$HERE/python/lib:${LD_LIBRARY_PATH:-}"
 cd "$HERE"
 exec "$HERE/python/bin/python3.11" -m worker.main
 WKSTART
