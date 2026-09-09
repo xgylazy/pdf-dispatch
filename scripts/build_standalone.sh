@@ -66,13 +66,11 @@ mkdir -p "${DIST_WK}/models"
 import os
 os.environ['PADDLE_PDX_CACHE_HOME']='${DIST_WK}/models'
 from paddleocr import PaddleOCR
-for m in ['PP-OCRv6_medium_det','PP-OCRv6_medium_rec']:
-    try:
-        PaddleOCR(text_detection_model_name=m,text_recognition_model_name=m,
-                  use_doc_orientation_classify=False,use_doc_unwarping=False,
-                  use_textline_orientation=False,enable_mkldnn=True)
-    except Exception:
-        PaddleOCR()
+# 一次调用同时预下载 det + rec 两套模型（与 worker/engine.py 运行时参数一致）
+PaddleOCR(text_detection_model_name='PP-OCRv6_medium_det',
+          text_recognition_model_name='PP-OCRv6_medium_rec',
+          use_doc_orientation_classify=False, use_doc_unwarping=False,
+          use_textline_orientation=False, enable_mkldnn=False)
 print('models OK')
 "
 
