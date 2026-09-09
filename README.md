@@ -235,3 +235,5 @@ unzip -o pdf-distribute-v0.1.36.zip -d dist/
 curl http://192.192.98.86:28765/docs
 curl http://192.192.98.86:28765/stats
 python examples/submit.py http://192.192.98.86:28765 D:/project/py_agent/PP-OCRv6/std_docs/GBT35273b.pdf
+292页
+python examples/submit.py http://192.192.98.86:28765 "D:/ouryun/pdf/GBT 28448-2019 信息安全技术网络安全等级保护测评要求.pdf"

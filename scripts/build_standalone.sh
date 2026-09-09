@@ -45,6 +45,10 @@ done
 # 注意：worker 无端口、不 import fastapi（shared/protocol.py 用 pydantic）
 "${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir \
   httpx pymupdf pydantic paddlepaddle paddleocr -q
+# paddleocr 默认依赖 opencv-python（需要 libGL.so.1），无头服务器装不上；
+# 换成 headless 变体，cv2 功能完全一致，只是不需要 X11/GL。
+"${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir opencv-python-headless -q
+"${DIST_WK}/python/bin/python3" -m pip uninstall -y opencv-python 2>/dev/null || true
 
 # scheduler 基础依赖（含 UploadFile 表单解析必需的 python-multipart）
 "${DIST_SC}/python/bin/python3" -m pip install --no-cache-dir \
