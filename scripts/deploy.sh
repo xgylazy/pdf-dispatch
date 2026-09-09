@@ -76,6 +76,14 @@ for target in "${TARGETS[@]}"; do
       kill "\$(cat "$DIR/data/${app}.pid")" 2>/dev/null || true
       sleep 1
     fi
+    # 兜底：清理绕过 PID 文件启动的残留进程（如手工 setsid/nohup 启动的）
+    # 注意：残留进程若正在执行 chunk 会被打断，请尽量在无任务时部署
+    if [[ "$app" == "worker" ]]; then
+      pkill -f "worker.main" 2>/dev/null || true
+    else
+      pkill -f "uvicorn scheduler.main" 2>/dev/null || true
+    fi
+    sleep 1
     tar -xzf "/tmp/$(basename "$PKG")" -C "$DIR" || exit 1
     cd "$DIR" || exit 1
     # 清理历史版本/手工部署的残留目录（当前包结构已不含这些）
