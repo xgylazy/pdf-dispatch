@@ -117,19 +117,18 @@ class Dispatcher:
             done = sum(1 for t in self.store.tasks_of(job_id)
                        if t.status == TaskStatus.DONE)
             self._chunks_done[job_id] = done
-        for td in self.store.pending_tasks_of(job_id):
-            self._pending.append(
-                (job_id, Chunk(index=td["chunk_index"],
-                               page_start=td["page_start"],
-                               page_end=td["page_end"],
-                               page_count=td["page_end"] - td["page_start"] + 1)))
-        # 恢复时把内存计数器写回 job.json，并触发可能已完成的合并
-        await self.store.update_job(job_id, chunks_done=done)
-        if done >= job.num_chunks:
-            await self.store.update_job(job_id, status=JobStatus.MERGING)
-            await self._merge(job_id)
-            log.info("recovered job %s already complete, merged at startup", job_id)
-        log.info("recovered job %s (%d/%d done)", job_id, done, job.num_chunks)
+            for td in self.store.pending_tasks_of(job_id):
+                self._pending.append(
+                    (job_id, Chunk(index=td["chunk_index"],
+                                   page_start=td["page_start"],
+                                   page_end=td["page_end"],
+                                   page_count=td["page_end"] - td["page_start"] + 1)))
+            await self.store.update_job(job_id, chunks_done=done)
+            if done >= job.num_chunks:
+                await self.store.update_job(job_id, status=JobStatus.MERGING)
+                await self._merge(job_id)
+                log.info("recovered job %s already complete, merged at startup", job_id)
+            log.info("recovered job %s (%d/%d done)", job_id, done, job.num_chunks)
 
     # ---------- 分发：worker claim ----------
 
