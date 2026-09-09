@@ -124,7 +124,7 @@ class Dispatcher:
                                page_end=td["page_end"],
                                page_count=td["page_end"] - td["page_start"] + 1)))
         # 恢复时把内存计数器写回 job.json，并触发可能已完成的合并
-        self.store.update_job(job_id, chunks_done=done)
+        await self.store.update_job(job_id, chunks_done=done)
         if done >= job.num_chunks:
             await self.store.update_job(job_id, status=JobStatus.MERGING)
             await self._merge(job_id)
@@ -170,7 +170,7 @@ class Dispatcher:
         await self._touch_backend(cb.backend_id or "", -1)
         done = self._chunks_done.get(cb.job_id, 0) + (1 if cb.ok else 0)
         self._chunks_done[cb.job_id] = done
-        self.store.update_job(cb.job_id, chunks_done=done)
+        await self.store.update_job(cb.job_id, chunks_done=done)
         job = self.store.load_job(cb.job_id)
         if job and done >= job.num_chunks:
             await self.store.update_job(cb.job_id, status=JobStatus.MERGING)
@@ -185,7 +185,7 @@ class Dispatcher:
         data = "\n".join(json.dumps(x, ensure_ascii=False)
                          for x in records).encode("utf-8")
         self.store.save_result(job_id, data)
-        self.store.update_job(job_id, status=JobStatus.DONE)
+        await self.store.update_job(job_id, status=JobStatus.DONE)
 
     # ---------- 查询 ----------
 
