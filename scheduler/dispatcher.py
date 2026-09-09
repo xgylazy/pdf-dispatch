@@ -167,20 +167,39 @@ class Dispatcher:
             cb.task_id, ok=cb.ok, records=cb.records,
             text_concat=cb.text_concat, error=cb.error, parse_ms=cb.parse_ms)
         await self._touch_backend(cb.backend_id or "", -1)
-        done = self._chunks_done.get(cb.job_id, 0) + (1 if cb.ok else 0)
-        self._chunks_done[cb.job_id] = done
-        await self.store.update_job(cb.job_id, chunks_done=done)
+        self._chunks_done[cb.job_id] = self._chunks_done.get(cb.job_id, 0) + (1 if cb.ok else 0)
+        await self.store.update_job(cb.job_id, chunks_done=self._chunks_done[cb.job_id])
+        # 扫盘判断：4 个 task 全部 ok=True 后才触发合并（而非信任内存 counter）
         job = self.store.load_job(cb.job_id)
-        if job and done >= job.num_chunks:
+        if not job:
+            return
+        tasks = self.store.tasks_of(cb.job_id)
+        all_ok = (len(tasks) == job.num_chunks
+                  and all(((r := self.store.task_result(t.task_id)) and r.get("ok"))
+                          for t in tasks))
+        if all_ok:
             await self.store.update_job(cb.job_id, status=JobStatus.MERGING)
             await self._merge(cb.job_id)
 
     async def _merge(self, job_id: str) -> None:
+        # 不从内存 counter 做判断——直接扫盘：只有当 4 个 task 全部 DONE/ok=True
+        # 时才真正合并，避免 await 交错导致部分回调未写回就触发 merge。
         records: list[dict] = []
-        for t in self.store.tasks_of(job_id):
+        tasks = self.store.tasks_of(job_id)
+        for t in tasks:
             r = self.store.task_result(t.task_id)
             if r and r.get("ok") and r.get("records"):
                 records.extend(r["records"])
+        # 防御：如果 scan 到的 ok=True task 数不够，说明还有 worker 没回写，
+        # 直接 return 等下次 job 状态刷新（比如 recover() 或下次 on_task_done）。
+        ok_count = sum(1 for t in tasks
+                       if (r := self.store.task_result(t.task_id)) and r.get("ok"))
+        job = self.store.load_job(job_id)
+        expected = job.num_chunks if job else 0
+        if ok_count < expected:
+            log.warning("merge skipped: only %d/%d tasks done on disk for %s — retry later",
+                         ok_count, expected, job_id)
+            return
         data = "\n".join(json.dumps(x, ensure_ascii=False)
                          for x in records).encode("utf-8")
         self.store.save_result(job_id, data)
