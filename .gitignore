@@ -5,3 +5,5 @@ __pycache__/
 .idea/
 *.zip
 *.tar.gz
+*.result.jsonl
+data/
