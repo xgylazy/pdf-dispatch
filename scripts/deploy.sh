@@ -7,9 +7,18 @@ PKG_SC="dist/pdf-distribute-scheduler-${VERSION}.tar.gz"
 DIR_WK="/opt/pdf-worker"
 DIR_SC="/opt/pdf-scheduler"
 
-[[ -f "$PKG_WK" ]] || { echo "[ERROR] 不存在 $PKG_WK"; exit 2; }
-[[ -f "$PKG_SC" ]] || { echo "[ERROR] 不存在 $PKG_SC"; exit 2; }
-[[ -f "${1:-}" ]] || { echo "[ERROR] 找不到 servers.txt: $1"; exit 2; }
+# ---------- 自动准备产物 ----------
+# 如果 dist/ 下还没有当前 VERSION 的 tarball，就自动找 zip 解压
+if [[ ! -f "$PKG_WK" || ! -f "$PKG_SC" ]]; then
+  echo "[deploy] dist/ 下没有 v${VERSION} 产物，尝试自动解压..."
+  ZIP="$(ls dist/pdf-distribute-v${VERSION}.zip 2>/dev/null | head -1)"
+  [[ -n "$ZIP" ]] || { echo "[ERROR] 找不到 dist/pdf-distribute-v${VERSION}.zip"; exit 2; }
+  echo "[deploy] 解压 $ZIP -> dist/"
+  unzip -o "$ZIP" -d dist/
+  [[ -f "$PKG_WK" && -f "$PKG_SC" ]] || { echo "[ERROR] 解压后仍未找到 tarball"; exit 2; }
+fi
+
+[[ -f "${1:-}" ]] || { echo "[ERROR] 需要 servers.txt 路径（用法: $0 servers.txt）"; exit 2; }
 
 SSH_OPTS="${SSH_OPTS:--i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=10}"
 mapfile -t TARGETS < <(grep -vE '^\s*#|^\s*$' "$1")
