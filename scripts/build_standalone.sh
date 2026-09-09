@@ -86,9 +86,10 @@ cat > "$DIST_WK/start.sh" <<'WKSTART'
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # 使用包内自带的 Python，不依赖系统解释器（依赖已装进其 site-packages）
-# 包内只有 worker/ 和 shared/，引擎模块默认值 pdf_dispatch.worker.engine 解析不到
+# 包内只有 worker/ 和 shared/，引擎模块默认值 pdf_dispatch.worker.engine 解析不到 
 export ENGINE_MODULE="${ENGINE_MODULE:-worker.engine}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
+export OCR_MODEL_DIR="$HERE/models/official_models"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:28765}"
 cd "$HERE"
 exec "$HERE/python/bin/python3.11" -m worker.main
