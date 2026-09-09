@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 import pymupdf
 
 log = logging.getLogger("worker.engine")
@@ -170,30 +171,34 @@ def _get_ocr():
         off = os.getenv("OCR_MODEL_DIR", "").strip()
         os.environ["PADDLE_PDX_CACHE_HOME"] = off or cache
         try:
+            # enable_mkldnn 关闭：paddle 3.3 + mkldnn/PIR 存在
+            # "ConvertPirAttribute2RuntimeAttribute not support" 推理崩溃
+            common = dict(device="cpu", enable_mkldnn=False,
+                          use_doc_orientation_classify=False,
+                          use_doc_unwarping=False,
+                          use_textline_orientation=False)
             if off:
-                args = dict(det_model_dir=str(Path(off) / "PP-OCRv6_medium_det"),
-                            rec_model_dir=str(Path(off) / "PP-OCRv6_medium_rec"),
-                            use_angle_cls=False, use_gpu=False,
-                            enable_mkldnn=True,
-                            use_doc_orientation_classify=False,
-                            use_doc_unwarping=False,
-                            use_textline_orientation=False)
+                det_dir = str(Path(off) / "PP-OCRv6_medium_det")
+                rec_dir = str(Path(off) / "PP-OCRv6_medium_rec")
+                # paddleocr >= 3.x：模型目录用 text_*_model_dir 指定
                 try:
-                    _ocr = PaddleOCR(**args)
+                    _ocr = PaddleOCR(
+                        text_detection_model_name="PP-OCRv6_medium_det",
+                        text_recognition_model_name="PP-OCRv6_medium_rec",
+                        text_detection_model_dir=det_dir,
+                        text_recognition_model_dir=rec_dir,
+                        **common)
                 except (TypeError, ValueError):
-                    _ocr = PaddleOCR(text_detection_model_name="PP-OCRv6_medium_det",
-                                     text_recognition_model_name="PP-OCRv6_medium_rec",
+                    # 旧版 2.x 回退
+                    _ocr = PaddleOCR(det_model_dir=det_dir, rec_model_dir=rec_dir,
                                      use_angle_cls=False, use_gpu=False,
-                                     enable_mkldnn=True,
-                                     use_doc_orientation_classify=False,
-                                     use_doc_unwarping=False,
-                                     use_textline_orientation=False)
+                                     enable_mkldnn=False)
             else:
                 try:
+                    _ocr = PaddleOCR(lang="ch", **common)
+                except (TypeError, ValueError):
                     _ocr = PaddleOCR(lang="ch", use_angle_cls=False,
-                                     use_gpu=False, enable_mkldnn=True)
-                except Exception:
-                    _ocr = PaddleOCR()
+                                     use_gpu=False, enable_mkldnn=False)
             log.info("paddle OCR 初始化完成")
         except Exception:
             log.exception("paddle 初始化失败，将仅使用矢量模式")
@@ -208,14 +213,21 @@ def _ocr_page_records(pno: int, page: pymupdf.Page, ocr) -> List[dict]:
     pw = page.rect.width or 1.0
 
     pix = page.get_pixmap(dpi=150)
+    # paddleocr 3.x 的 predict 只接受 numpy.ndarray 或路径，不接受 bytes
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    if pix.n == 4:  # RGBA → RGB
+        img = img[:, :, :3]
     try:
-        res = ocr.predict(pix.tobytes("png"))
+        res = ocr.predict(img)
     except Exception:
         try:
-            res = ocr.ocr(pix.tobytes("png"), cls=False)
+            res = ocr.ocr(img)                    # paddleocr 3.x
         except Exception:
-            log.exception("ocr call failed p.%d", pno)
-            return recs
+            try:
+                res = ocr.ocr(img, cls=False)     # paddleocr 2.x
+            except Exception:
+                log.exception("ocr call failed p.%d", pno)
+                return recs
 
     if isinstance(res, dict):
         page_results = res.get("res") or res.get("results") or [res]
