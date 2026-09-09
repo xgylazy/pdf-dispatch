@@ -9,14 +9,28 @@ DIR_SC="/opt/pdf-scheduler"
 
 # ---------- 自动准备产物 ----------
 # 如果 dist/ 下还没有当前 VERSION 的 tarball，就自动找 zip 解压
+# 搜索顺序：先 dist/ 后脚本所在目录（项目根目录）；zip 在哪就解压到哪
 if [[ ! -f "$PKG_WK" || ! -f "$PKG_SC" ]]; then
-  echo "[deploy] dist/ 下没有 v${VERSION} 产物，尝试自动解压..."
-  ZIP="$(ls dist/pdf-distribute-v${VERSION}.zip 2>/dev/null | head -1)"
-  [[ -n "$ZIP" ]] || { echo "[ERROR] 找不到 dist/pdf-distribute-v${VERSION}.zip"; exit 2; }
-  echo "[deploy] 解压 $ZIP -> dist/"
-  unzip -o "$ZIP" -d dist/
-  [[ -f "$PKG_WK" && -f "$PKG_SC" ]] || { echo "[ERROR] 解压后仍未找到 tarball"; exit 2; }
+  echo "==> [deploy] v${VERSION} 产物不在 dist/ 下，搜索 zip..."
+  ZIP=""
+  for candidate in "dist/pdf-distribute-v${VERSION}.zip" "pdf-distribute-v${VERSION}.zip"; do
+    if [[ -f "$candidate" ]]; then ZIP="$candidate"; break; fi
+  done
+  if [[ -z "$ZIP" ]]; then
+    echo
+    echo "==> [ERROR] 找不到 pdf-distribute-v${VERSION}.zip"
+    echo "    已搜索路径："
+    echo "      - $(pwd)/dist/pdf-distribute-v${VERSION}.zip"
+    echo "      - $(pwd)/pdf-distribute-v${VERSION}.zip"
+    echo "    解决方式：把 zip 放到上面任一位置，然后重新执行："
+    echo "      bash scripts/deploy.sh servers.txt"
+    exit 2
+  fi
+  echo "==> [deploy] 找到 $ZIP，解压中..."
+  unzip -o "$ZIP" -d "$(dirname "$ZIP")/"
+  [[ -f "$PKG_WK" && -f "$PKG_SC" ]] || { echo "[ERROR] 解压后仍缺少 tarball"; exit 2; }
 fi
+echo "==> [deploy] 产物就绪：$PKG_WK + $PKG_SC"
 
 [[ -f "${1:-}" ]] || { echo "[ERROR] 需要 servers.txt 路径（用法: $0 servers.txt）"; exit 2; }
 
