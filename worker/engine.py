@@ -93,7 +93,7 @@ def _is_text_page(page: pymupdf.Page, min_chars: int = 80) -> bool:
 # ---------------------------------------------------------------------------
 
 def _vector_page_records(pno: int, page: pymupdf.Page) -> List[dict]:
-    """文字页 → 行 + 表格 + 图形区。"""
+    """文字页 → 行 + 表格 + 图形区。pno 是全局页号（1-based），不是子文档索引。"""
     page_area = page.rect.get_area()
     ph = page.rect.height or 1.0
     recs: List[dict] = []
@@ -251,8 +251,13 @@ def _ocr_page_records(pno: int, page: pymupdf.Page, ocr) -> List[dict]:
 # 入口
 # ---------------------------------------------------------------------------
 
-def parse_pdf(file_bytes: bytes) -> List[dict]:
-    """解析 PDF 字节流，返回与 pdf2tree 等价的记录流。"""
+def parse_pdf(file_bytes: bytes, *, page_offset: int = 0) -> List[dict]:
+    """解析 PDF 字节流，返回与 pdf2tree 等价的记录流。
+
+    page_offset: 档页在原始完整 PDF 中的起始页码偏移。
+                parse_pdf 看到的档页 i（0-based）对应全局页码 i+1+page_offset。
+                例如档页 11-20 送进来，page_offset=10，产生的记录里 page=11-20。
+    """
     doc = pymupdf.open(stream=file_bytes, filetype="pdf")
     if doc.page_count == 0:
         doc.close()
@@ -263,16 +268,17 @@ def parse_pdf(file_bytes: bytes) -> List[dict]:
         ocr = _get_ocr() if need_ocr else None
         for i in range(doc.page_count):
             page = doc[i]
+            pno = i + 1 + page_offset          # 反映原始 PDF 的全局页号
             if _is_text_page(page):
-                out.extend(_vector_page_records(i + 1, page))
+                out.extend(_vector_page_records(pno, page))
             elif ocr is not None:
                 try:
-                    out.extend(_ocr_page_records(i + 1, page, ocr))
+                    out.extend(_ocr_page_records(pno, page, ocr))
                 except Exception:
-                    log.exception("ocr parse failed p.%d", i + 1)
+                    log.exception("ocr parse failed p.%d", pno)
             else:
-                out.append({"t": "page", "page": i + 1})
-                log.info("p.%d 是扫描页但 OCR 不可用，跳过", i + 1)
+                out.append({"t": "page", "page": pno})
+                log.info("p.%d 是扫描页但 OCR 不可用，跳过", pno)
     finally:
         doc.close()
     return out

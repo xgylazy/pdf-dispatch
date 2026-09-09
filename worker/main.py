@@ -129,7 +129,7 @@ async def _tick() -> bool:
         piece = extract_page_range(pdf_bytes, page_start, page_end)
         t0 = time.time()
         try:
-            records = _engine_parse_pdf(piece)
+            records = _engine_parse_pdf(piece, page_offset=page_start - 1)
             ok, err = True, None
             log.info("parsed %s OK (%d records, %.1fs)",
                      task_id, len(records), time.time() - t0)
