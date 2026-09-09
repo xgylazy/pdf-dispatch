@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-"""PDF 分页切片 / 合并工具 —— 复用 pdf2tree 同一套 pymupdf 基础。
-
-调度中心整存 PDF（二进制入 Mongo GridFS），下发时只传 {page_start, page_end}
-让 worker 自己裁页，避免调度中心做字节拷贝。
-"""
+"""PDF 分页切片 / 合并工具 —— scheduler 用 plan_chunks 生成任务边界，worker
+用 extract_page_range 把 PDF 裁页后下入 engine。整份 PDF 存 scheduler 的
+data/pdfs/<job_id>，由 worker 直接读字节流，不做数据库 / GridFS。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
