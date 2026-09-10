@@ -114,6 +114,14 @@ exec "$HERE/python/bin/python3.11" -m uvicorn scheduler.main:app --host "${HOST:
 SCSTART
 
 chmod +x "$DIST_WK/start.sh" "$DIST_SC/start.sh"
+
+# ── Step 4: 打包（原 package.sh 并入）────────────────
+echo "[4/4] 打包"
+tar -czf "dist/pdf-distribute-worker-${VERSION}.tar.gz"    -C "$DIST_WK" .
+tar -czf "dist/pdf-distribute-scheduler-${VERSION}.tar.gz" -C "$DIST_SC" .
+sha256sum dist/pdf-distribute-*.tar.gz > dist/SHA256SUMS
+
 echo "[done]"
 echo "  worker:    $DIST_WK ($(du -sh "$DIST_WK" | cut -f1))"
 echo "  scheduler: $DIST_SC ($(du -sh "$DIST_SC" | cut -f1))"
+echo "  产物:      dist/pdf-distribute-{worker,scheduler}-${VERSION}.tar.gz"

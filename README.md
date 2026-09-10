@@ -74,11 +74,8 @@ cd /path/to/pdf_dispatch
 python scripts/setup_keys.py -p YourPassword     # 所有机器同一密码 -> 并行
 python scripts/setup_keys.py -f passwords.txt    # 不同密码：每行 host:password
 
-# 1. 构建（约 5 分钟；下载 Python + pip 装依赖 + 下模型）
+# 1. 构建 + 打包（约 5 分钟；下载 Python + pip 装依赖 + 下模型 + 出 tarball）
 ./scripts/build_standalone.sh
-
-# 2. 打包（约 500 MB）
-./scripts/package.sh
 ```
 
 第 0 步只需跑一次，之后重跑 `deploy.py` 即可热更新代码。
@@ -229,7 +226,7 @@ pymupdf>=23.11
 </｜DSML｜parameter>
 
 
-github action
+python scripts/setup_keys.py -p 123.com
 python scripts/deploy.py servers.txt
 curl http://192.192.98.86:28765/docs
 curl http://192.192.98.86:28765/stats
