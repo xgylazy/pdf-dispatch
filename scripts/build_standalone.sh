@@ -17,9 +17,13 @@ OCR_DET_MODEL="${OCR_DET_MODEL:-PP-OCRv6_medium_det}"
 OCR_REC_MODEL="${OCR_REC_MODEL:-PP-OCRv6_medium_rec}"
 WORKER_PIP_DEPS="${WORKER_PIP_DEPS:-httpx pymupdf pydantic paddlepaddle paddleocr}"
 SCHEDULER_PIP_DEPS="${SCHEDULER_PIP_DEPS:-httpx pymupdf fastapi pydantic python-multipart uvicorn[standard]}"
+CHUNK_PAGES_TEXT="${CHUNK_PAGES_TEXT:-10}"
+CHUNK_PAGES_SCANNED="${CHUNK_PAGES_SCANNED:-1}"
+CHUNK_SCANNED_RATIO="${CHUNK_SCANNED_RATIO:-0.5}"
 
 echo "[build] VERSION=$VERSION"
 echo "[build] 配置: python=$PYBS_PYTHON($PYBS_RELEASE) 模型=$OCR_DET_MODEL/$OCR_REC_MODEL"
+echo "[build] 分片: 文字页 ${CHUNK_PAGES_TEXT} 页/片, 扫描件 ${CHUNK_PAGES_SCANNED} 页/片 (占比阈值 ${CHUNK_SCANNED_RATIO})"
 
 echo "════════════════════════════════════════════════════"
 echo "  pdf-dispatch 绿色包 v${VERSION}"
@@ -122,13 +126,17 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # 使用包内自带的 Python，不依赖系统解释器
 export DATA_DIR="${DATA_DIR:-$HERE/data}"
+export CHUNK_PAGES_TEXT="__CHUNK_PAGES_TEXT__"
+export CHUNK_PAGES_SCANNED="__CHUNK_PAGES_SCANNED__"
+export CHUNK_SCANNED_RATIO="__CHUNK_SCANNED_RATIO__"
 mkdir -p "$DATA_DIR"
 cd "$HERE"
 exec "$HERE/python/bin/python3.11" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-28765}"
 SCSTART
 
-# 把 build.conf 的模型名烘焙进 start.sh（占位符替换，构建后即为静态值）
+# 把 build.conf 的模型名/分片规则烘焙进 start.sh（占位符替换，构建后即为静态值）
 sed -i "s/__OCR_DET_MODEL__/${OCR_DET_MODEL}/; s/__OCR_REC_MODEL__/${OCR_REC_MODEL}/" "$DIST_WK/start.sh"
+sed -i "s/__CHUNK_PAGES_TEXT__/${CHUNK_PAGES_TEXT}/; s/__CHUNK_PAGES_SCANNED__/${CHUNK_PAGES_SCANNED}/; s/__CHUNK_SCANNED_RATIO__/${CHUNK_SCANNED_RATIO}/" "$DIST_SC/start.sh"
 
 chmod +x "$DIST_WK/start.sh" "$DIST_SC/start.sh"
 

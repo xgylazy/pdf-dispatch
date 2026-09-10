@@ -19,11 +19,13 @@ if not os.path.isfile(PDF):
 t0 = time.time()
 
 with open(PDF, "rb") as f:
-    r = requests.post(f"{SCHED}/jobs", files={"file": (PDF, f)},
-                      data={"split_size": SPLIT_SIZE})
+    # 显式给了第三个参数才传 split_size，否则由调度中心按内容自动分片
+    form = {"split_size": SPLIT_SIZE} if len(sys.argv) > 3 else {}
+    r = requests.post(f"{SCHED}/jobs", files={"file": (PDF, f)}, data=form)
 r.raise_for_status()
 job = r.json()
-print("job:", job.get("job_id"), "pages:", job.get("total_pages"), "chunks:", job.get("num_chunks"))
+print("job:", job.get("job_id"), "pages:", job.get("pages"),
+      "split:", job.get("split_size"), "chunks:", job.get("num_chunks"))
 
 status = "pending"
 while status not in ("done", "failed"):
