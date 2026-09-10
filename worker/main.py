@@ -82,14 +82,14 @@ def _engine_has_ocr() -> bool:
 
 # 解析专用子进程池（单进程即可：主循环本身串行领任务）。
 # 子进程里 paddle 模型只加载一次并常驻，后续任务直接复用。
-_parse_pool: ProcessPoolExecutor | None = None
+_parse_executor: ProcessPoolExecutor | None = None
 
 
 def _parse_pool() -> ProcessPoolExecutor:
-    global _parse_pool
-    if _parse_pool is None:
-        _parse_pool = ProcessPoolExecutor(max_workers=1)
-    return _parse_pool
+    global _parse_executor
+    if _parse_executor is None:
+        _parse_executor = ProcessPoolExecutor(max_workers=1)
+    return _parse_executor
 
 
 def _parse_task(piece: bytes, page_offset: int) -> list:
