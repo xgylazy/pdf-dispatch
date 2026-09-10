@@ -7,7 +7,19 @@ BUILD_DIR="${PROJ}/build"
 DIST_WK="${PROJ}/dist/standalone-worker"
 DIST_SC="${PROJ}/dist/standalone-scheduler"
 VERSION="${VERSION:-$(cat "$PROJ/VERSION" 2>/dev/null || echo 0.1.0)}"
+
+# ── 读取构建配置（静态烘焙进包，运行时不读任何配置文件）──
+CONF="${PROJ}/build.conf"
+[[ -f "$CONF" ]] && source "$CONF"
+PYBS_RELEASE="${PYBS_RELEASE:-20240415}"
+PYBS_PYTHON="${PYBS_PYTHON:-cpython-3.11.9}"
+OCR_DET_MODEL="${OCR_DET_MODEL:-PP-OCRv6_medium_det}"
+OCR_REC_MODEL="${OCR_REC_MODEL:-PP-OCRv6_medium_rec}"
+WORKER_PIP_DEPS="${WORKER_PIP_DEPS:-httpx pymupdf pydantic paddlepaddle paddleocr}"
+SCHEDULER_PIP_DEPS="${SCHEDULER_PIP_DEPS:-httpx pymupdf fastapi pydantic python-multipart uvicorn[standard]}"
+
 echo "[build] VERSION=$VERSION"
+echo "[build] 配置: python=$PYBS_PYTHON($PYBS_RELEASE) 模型=$OCR_DET_MODEL/$OCR_REC_MODEL"
 
 echo "════════════════════════════════════════════════════"
 echo "  pdf-dispatch 绿色包 v${VERSION}"
@@ -20,7 +32,7 @@ mkdir -p "$BUILD_DIR"
 PY_DIR="${BUILD_DIR}/python311"
 if [[ ! -d "$PY_DIR" ]]; then
   echo "[1/3] 下载 python-build-standalone ..."
-  curl -fL "https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.11.9+20240415-x86_64-unknown-linux-gnu-install_only.tar.gz" \
+  curl -fL "https://github.com/indygreg/python-build-standalone/releases/download/${PYBS_RELEASE}/${PYBS_PYTHON}+${PYBS_RELEASE}-x86_64-unknown-linux-gnu-install_only.tar.gz" \
     -o "${BUILD_DIR}/py.tar.gz"
   mkdir -p "$PY_DIR"
   tar -xzf "${BUILD_DIR}/py.tar.gz" -C "$PY_DIR" --strip-components=1
@@ -43,16 +55,16 @@ done
 
 # worker 全依赖 → worker/python 自己的 site-packages
 # 注意：worker 无端口、不 import fastapi（shared/protocol.py 用 pydantic）
-"${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir \
-  httpx pymupdf pydantic paddlepaddle paddleocr -q
+# shellcheck disable=SC2086
+"${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir $WORKER_PIP_DEPS -q
 # paddleocr 默认依赖 opencv-python（需要 libGL.so.1），无头服务器装不上；
 # 换成 headless 变体，cv2 功能完全一致，只是不需要 X11/GL。
 "${DIST_WK}/python/bin/python3" -m pip install --no-cache-dir opencv-python-headless -q
 "${DIST_WK}/python/bin/python3" -m pip uninstall -y opencv-python 2>/dev/null || true
 
 # scheduler 基础依赖（含 UploadFile 表单解析必需的 python-multipart）
-"${DIST_SC}/python/bin/python3" -m pip install --no-cache-dir \
-  httpx pymupdf fastapi pydantic python-multipart "uvicorn[standard]" -q
+# shellcheck disable=SC2086
+"${DIST_SC}/python/bin/python3" -m pip install --no-cache-dir $SCHEDULER_PIP_DEPS -q
 
 # 验证自带解释器随包可用（防止只拷了依赖没拷解释器/漏依赖的回归）
 "${DIST_SC}/python/bin/python3" -c 'import sys, uvicorn, fastapi, pymupdf, httpx, python_multipart; print("bundle python OK:", sys.version)' \
@@ -66,9 +78,9 @@ mkdir -p "${DIST_WK}/models"
 import os
 os.environ['PADDLE_PDX_CACHE_HOME']='${DIST_WK}/models'
 from paddleocr import PaddleOCR
-# 一次调用同时预下载 det + rec 两套模型（与 worker/engine.py 运行时参数一致）
-PaddleOCR(text_detection_model_name='PP-OCRv6_medium_det',
-          text_recognition_model_name='PP-OCRv6_medium_rec',
+# 一次调用同时预下载 det + rec 两套模型（模型名来自 build.conf）
+PaddleOCR(text_detection_model_name='$OCR_DET_MODEL',
+          text_recognition_model_name='$OCR_REC_MODEL',
           use_doc_orientation_classify=False, use_doc_unwarping=False,
           use_textline_orientation=False, enable_mkldnn=False)
 print('models OK')
@@ -93,6 +105,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export ENGINE_MODULE="${ENGINE_MODULE:-worker.engine}"
 export PADDLE_PDX_CACHE_HOME="$HERE/models"
 export OCR_MODEL_DIR="$HERE/models/official_models"
+export OCR_DET_MODEL="__OCR_DET_MODEL__"
+export OCR_REC_MODEL="__OCR_REC_MODEL__"
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:28765}"
 # 包内自带 libgomp，避免目标机缺 GNU OpenMP 运行库导致 paddle 无法 import
 export LD_LIBRARY_PATH="$HERE/python/lib:${LD_LIBRARY_PATH:-}"
@@ -112,6 +126,9 @@ mkdir -p "$DATA_DIR"
 cd "$HERE"
 exec "$HERE/python/bin/python3.11" -m uvicorn scheduler.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-28765}"
 SCSTART
+
+# 把 build.conf 的模型名烘焙进 start.sh（占位符替换，构建后即为静态值）
+sed -i "s/__OCR_DET_MODEL__/${OCR_DET_MODEL}/; s/__OCR_REC_MODEL__/${OCR_REC_MODEL}/" "$DIST_WK/start.sh"
 
 chmod +x "$DIST_WK/start.sh" "$DIST_SC/start.sh"
 

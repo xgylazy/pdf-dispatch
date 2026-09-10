@@ -170,6 +170,9 @@ def _get_ocr():
         cache = os.getenv("PADDLE_PDX_CACHE_HOME", "models")
         off = os.getenv("OCR_MODEL_DIR", "").strip()
         os.environ["PADDLE_PDX_CACHE_HOME"] = off or cache
+        # 模型名由构建时 build.conf 烘焙进 start.sh（不设则用默认）
+        det_name = os.getenv("OCR_DET_MODEL", "PP-OCRv6_medium_det")
+        rec_name = os.getenv("OCR_REC_MODEL", "PP-OCRv6_medium_rec")
         try:
             # enable_mkldnn 关闭：paddle 3.3 + mkldnn/PIR 存在
             # "ConvertPirAttribute2RuntimeAttribute not support" 推理崩溃
@@ -178,13 +181,13 @@ def _get_ocr():
                           use_doc_unwarping=False,
                           use_textline_orientation=False)
             if off:
-                det_dir = str(Path(off) / "PP-OCRv6_medium_det")
-                rec_dir = str(Path(off) / "PP-OCRv6_medium_rec")
+                det_dir = str(Path(off) / det_name)
+                rec_dir = str(Path(off) / rec_name)
                 # paddleocr >= 3.x：模型目录用 text_*_model_dir 指定
                 try:
                     _ocr = PaddleOCR(
-                        text_detection_model_name="PP-OCRv6_medium_det",
-                        text_recognition_model_name="PP-OCRv6_medium_rec",
+                        text_detection_model_name=det_name,
+                        text_recognition_model_name=rec_name,
                         text_detection_model_dir=det_dir,
                         text_recognition_model_dir=rec_dir,
                         **common)
