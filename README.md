@@ -227,6 +227,7 @@ pymupdf>=23.11
 
 
 python scripts/setup_keys.py -p 123.com
+
 python scripts/deploy.py servers.txt
 curl http://192.192.98.86:28765/docs
 curl http://192.192.98.86:28765/stats
@@ -234,5 +235,7 @@ curl http://192.192.98.86:28765/stats
 
 40页非扫描件：
 python examples/submit.py http://192.192.98.86:28765 D:/project/py_agent/PP-OCRv6/std_docs/GBT35273b.pdf
-292页扫描件：
+292页扫描件A：
 python examples/submit.py http://192.192.98.86:28765 "D:/ouryun/pdf/GBT 28448-2019 信息安全技术网络安全等级保护测评要求.pdf"
+292页扫描件A-前12页测试：
+python examples/submit.py http://192.192.98.86:28765 "D:/project/pdf_dispatch/test/GBT28448-2019_前12页.pdf"

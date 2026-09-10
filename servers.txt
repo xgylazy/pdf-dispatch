@@ -1,3 +1,13 @@
 root@192.192.98.86 app=scheduler
+root@192.192.98.80 app=worker
+root@192.192.98.81 app=worker
+root@192.192.98.83 app=worker
+root@192.192.98.84 app=worker
+root@192.192.98.85 app=worker
 root@192.192.98.86 app=worker
+root@192.192.98.100 app=worker
+root@192.192.98.101 app=worker
+root@192.192.98.103 app=worker
+root@192.192.98.104 app=worker
+root@192.192.98.105 app=worker
 root@192.192.98.106 app=worker
