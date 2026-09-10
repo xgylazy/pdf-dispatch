@@ -80,6 +80,7 @@ def ensure_artifacts(version: str) -> tuple[Path, Path]:
 
 def parse_servers(path: Path) -> list[tuple[str, str]]:
     targets = []
+    seen: set[tuple[str, str]] = set()
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -90,7 +91,10 @@ def parse_servers(path: Path) -> list[tuple[str, str]]:
         for kv in parts[1:]:
             if kv.startswith("app="):
                 app = kv[4:]
-        targets.append((userhost, app))
+        # 同一 host 可有多行不同角色（如同时跑 scheduler+worker），但完全重复的行去掉
+        if (userhost, app) not in seen:
+            seen.add((userhost, app))
+            targets.append((userhost, app))
     return targets
 
 

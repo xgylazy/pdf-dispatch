@@ -43,8 +43,10 @@ def ensure_key(key_path: Path) -> Path:
 
 
 def parse_servers(path: Path) -> list[tuple[str, str]]:
-    """返回 [(user, host)] 列表。"""
-    out = []
+    """返回 [(user, host)] 列表，按 user@host 去重（同一台机器配一次公钥即可，
+    servers.txt 里允许同一 host 出现多行不同 app= 角色）。"""
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -53,7 +55,9 @@ def parse_servers(path: Path) -> list[tuple[str, str]]:
         user, _, host = userhost.partition("@")
         if not host:
             user, host = "root", user
-        out.append((user, host))
+        if (user, host) not in seen:
+            seen.add((user, host))
+            out.append((user, host))
     return out
 
 
