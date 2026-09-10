@@ -125,8 +125,15 @@ async def _tick() -> bool:
         page_end = body["page_end"]
         log.info("claimed %s (pages %d-%d)", task_id, page_start, page_end)
 
-        pdf_bytes = base64.b64decode(body["pdf_bytes"])
-        piece = extract_page_range(pdf_bytes, page_start, page_end)
+        if "pdf_bytes" in body:
+            # 兼容旧 scheduler：整本 PDF base64 + 本地裁页
+            pdf_bytes = base64.b64decode(body["pdf_bytes"])
+            piece = extract_page_range(pdf_bytes, page_start, page_end)
+        else:
+            # 两步式：claim 给 pdf_url，原始二进制拉取（已是预切片，无需再裁）
+            pr = await cli.get(f"{SCHEDULER_URL}{body['pdf_url']}")
+            pr.raise_for_status()
+            piece = pr.content
         t0 = time.time()
         try:
             # 解析放到线程里跑：parse_pdf 是同步重计算（OCR 一页可达分钟级），

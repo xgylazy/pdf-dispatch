@@ -58,6 +58,18 @@ class FileStore:
     def load_pdf(self, job_id: str) -> bytes:
         return (self.pdf_dir / f"{job_id}.pdf").read_bytes()
 
+    # ---------- 预切片（enqueue 时按 chunk 物理裁好，claim 时原样二进制下发） ----------
+
+    def pdf_piece_path(self, job_id: str, index: int) -> Path:
+        return self.pdf_dir / job_id / f"chunk_{index:05d}.pdf"
+
+    def save_pdf_piece(self, job_id: str, index: int, data: bytes) -> None:
+        self._atomic_write(self.pdf_piece_path(job_id, index), data)
+
+    def load_pdf_piece(self, job_id: str, index: int) -> bytes | None:
+        p = self.pdf_piece_path(job_id, index)
+        return p.read_bytes() if p.is_file() else None
+
     def save_result(self, job_id: str, data: bytes) -> None:
         self._atomic_write(self.result_dir / f"{job_id}.jsonl", data)
 

@@ -11,14 +11,15 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import time
 from collections import deque
 from typing import List, Optional
 
-from shared.pdfsplit import Chunk, plan_chunks
+import pymupdf
+
+from shared.pdfsplit import Chunk, extract_page_range, plan_chunks
 from shared.protocol import (
     BackendInfo, DispatchPolicy, Heartbeat, JobInfo, JobStatus,
     TaskCallback, TaskInfo, TaskStatus,
@@ -36,7 +37,6 @@ class Dispatcher:
         self._pending: deque = deque()
         self._num_chunks: dict[str, int] = {}
         self._chunks_done: dict[str, int] = {}
-        self._pdfs: dict[str, bytes] = {}
         self._backends: dict[str, BackendInfo] = {}
 
     # ---------- 后端 ----------
@@ -88,7 +88,18 @@ class Dispatcher:
                       created_at=time.time(), updated_at=time.time())
         self.store.save_job(job)
         self.store.save_pdf(job_id, pdf_bytes)
-        self._pdfs[job_id] = pdf_bytes
+        # 物理预切：每个 chunk 裁成独立小 PDF 落盘，claim 时只下发该片段
+        # （避免每次 claim 重复传输整本 PDF）
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            for ck in chunks:
+                piece = pymupdf.open()
+                piece.insert_pdf(doc, from_page=ck.page_start - 1,
+                                 to_page=ck.page_end - 1)
+                self.store.save_pdf_piece(job_id, ck.index, piece.tobytes())
+                piece.close()
+        finally:
+            doc.close()
         self._num_chunks[job_id] = len(chunks)
         self._chunks_done[job_id] = 0
 
@@ -106,11 +117,6 @@ class Dispatcher:
         for job_id in self.store.recover():
             job = self.store.load_job(job_id)
             if not job:
-                continue
-            try:
-                pdf = self.store.load_pdf(job_id)
-                self._pdfs[job_id] = pdf
-            except FileNotFoundError:
                 continue
             self._num_chunks[job_id] = job.num_chunks
             # 启动时从磁盘统计已完成的 chunk，避免重启后计数器归零
@@ -146,19 +152,31 @@ class Dispatcher:
 
     async def _payload(self, job_id: str, ck: Chunk) -> dict:
         job = self.store.load_job(job_id)
-        pdf = self._pdfs.get(job_id)
-        if pdf is None:
-            pdf = self.store.load_pdf(job_id)
-            self._pdfs[job_id] = pdf
+        task_id = f"{job_id}_{ck.index}"
         return {
-            "task_id": f"{job_id}_{ck.index}",
+            "task_id": task_id,
             "job_id": job_id,
             "filename": job.filename if job else "",
             "chunk_index": ck.index,
             "page_start": ck.page_start, "page_end": ck.page_end,
             "total_pages": job.total_pages if job else 0,
-            "pdf_bytes": base64.b64encode(pdf).decode("ascii"),
+            # 两步式：claim 只发元数据，PDF 二进制由 worker 按 pdf_url 原样拉取
+            "pdf_url": f"/internal/task/{task_id}/pdf",
         }
+
+    async def task_pdf(self, task_id: str) -> bytes:
+        """返回某个 task 对应的预切 PDF 片段（原始二进制）。
+
+        分片文件缺失时（老任务/异常恢复）从整本 PDF 现场裁页兜底。
+        """
+        t = self.store.load_task(task_id)
+        if not t:
+            raise FileNotFoundError(task_id)
+        piece = self.store.load_pdf_piece(t.job_id, t.chunk_index)
+        if piece is not None:
+            return piece
+        pdf = self.store.load_pdf(t.job_id)
+        return extract_page_range(pdf, t.page_start, t.page_end)
 
     # ---------- 回调 ----------
 

@@ -37,7 +37,8 @@ PDF 解析分布式调度系统：调度中心接收 PDF → 分页切片 → �
 | POST | `/jobs` | 客户端 | multipart 上传 PDF，202 + job_id |
 | GET | `/jobs/{id}` | 客户端 | 查状态 |
 | GET | `/jobs/{id}/result` | 客户端 | 下载合并后 JSONL |
-| POST | `/internal/claim` | worker | 取一片（响应含 base64 PDF + 裁页范围） |
+| POST | `/internal/claim` | worker | 取一片（响应为元数据 + pdf_url，两步式） |
+| GET | `/internal/task/{id}/pdf` | worker | 拉取该分片预切 PDF（原始二进制） |
 | POST | `/internal/task_done` | worker | 推回 `{ok, records, parse_ms}` |
 | POST | `/internal/heartbeat` | worker | 上报 `{backend_id, capacity, active_tasks, pdf_capable}` |
 

@@ -16,7 +16,7 @@ import uuid
 
 import pymupdf
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from scheduler.dispatcher import Dispatcher
 from scheduler.persistence import FileStore
@@ -112,6 +112,16 @@ async def claim(backend_id: str | None = None):
     if not payload:
         raise HTTPException(204, "no pending chunk")
     return payload
+
+
+@app.get("/internal/task/{task_id}/pdf")
+async def task_pdf(task_id: str):
+    """两步式分发第二步：按 claim 返回的 pdf_url 拉取预切 PDF 片段（原始二进制）。"""
+    try:
+        data = await dispatcher.task_pdf(task_id)
+    except FileNotFoundError:
+        raise HTTPException(404, f"task not found: {task_id}")
+    return Response(content=data, media_type="application/pdf")
 
 
 @app.post("/internal/task_done")
