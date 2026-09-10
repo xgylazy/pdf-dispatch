@@ -151,7 +151,11 @@ def main() -> int:
         try:
             import paramiko  # noqa: F401
         except ImportError:
-            print("[ERROR] 密码模式需要 paramiko：pip install paramiko")
+            print("[ERROR] 当前 Python 缺少 paramiko，安装方式：")
+            print("  Windows 原生 Python / 常规 venv:  pip install paramiko")
+            print("  msys2 系统Python:                 pacman -S mingw-w64-x86_64-python-paramiko")
+            print("  注意：msys2 下 pacman 装的包对激活的 venv 不可见，请 deactivate 后再跑，")
+            print("        或改用 Windows 原生 Python（有预编译 wheel，无需编译 Rust）")
             return 2
         print(f"==> 并行安装公钥：{len(pending_pw)} 台，并发 {args.parallel}")
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
