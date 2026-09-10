@@ -21,6 +21,7 @@ import signal
 import sys
 import time
 import uuid
+from concurrent.futures import ProcessPoolExecutor
 
 import httpx
 
@@ -78,6 +79,23 @@ def _engine_has_ocr() -> bool:
     """启发式判断引擎是否支持 OCR：模块路径含 paddle 或 pdf2tree 视为 True。"""
     return "paddle" in ENGINE_MODULE or "pdf2tree" in ENGINE_MODULE
 
+
+# 解析专用子进程池（单进程即可：主循环本身串行领任务）。
+# 子进程里 paddle 模型只加载一次并常驻，后续任务直接复用。
+_parse_pool: ProcessPoolExecutor | None = None
+
+
+def _parse_pool() -> ProcessPoolExecutor:
+    global _parse_pool
+    if _parse_pool is None:
+        _parse_pool = ProcessPoolExecutor(max_workers=1)
+    return _parse_pool
+
+
+def _parse_task(piece: bytes, page_offset: int) -> list:
+    """子进程入口：跑解析引擎（独立 GIL，不拖累主进程心跳）。"""
+    return _engine_parse_pdf(piece, page_offset=page_offset)
+
 # ---------------------------------------------------------------------------
 # 心跳
 # ---------------------------------------------------------------------------
@@ -128,10 +146,12 @@ async def _tick() -> bool:
         piece = pr.content
         t0 = time.time()
         try:
-            # 解析放到线程里跑：parse_pdf 是同步重计算（OCR 一页可达分钟级），
-            # 直接在事件循环里跑会阻塞心跳，导致调度中心把本 worker 标记为不健康
-            records = await asyncio.to_thread(
-                _engine_parse_pdf, piece, page_offset=page_start - 1)
+            # 解析放到【子进程】跑：paddle 推理会占住 GIL，线程/事件循环都会被
+            # 冻住（心跳停发 → 调度中心误判不健康）。子进程有独立 GIL，父进程
+            # 的心跳/claim 循环全程畅通，且 paddle 崩溃也不会带走 worker 主进程。
+            loop = asyncio.get_running_loop()
+            records = await loop.run_in_executor(
+                _parse_pool(), _parse_task, piece, page_start - 1)
             ok, err = True, None
             log.info("parsed %s OK (%d records, %.1fs)",
                      task_id, len(records), time.time() - t0)
