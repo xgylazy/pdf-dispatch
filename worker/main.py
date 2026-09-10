@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """无状态解析后端（纯 asyncio，无端口、无 FastAPI、无 uvicorn）。
 
-职责：启动后连调度中心 pull 任务 → 裁页 → 解析 → 回调结果。
+职责：启动后连调度中心 claim 任务 → 拉取预切 PDF 片段 → 解析 → 回调结果。
 节点无端口、对外不暴露 HTTP，仅通过 httpx 客户端主动连接调度中心。
 
 容量自动感知：CAPACITY 默认取本机 CPU 核数，可通过环境变量覆盖。
@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import importlib
 import logging
 import os
@@ -24,8 +23,6 @@ import time
 import uuid
 
 import httpx
-
-from shared.pdfsplit import extract_page_range
 
 # ---------------------------------------------------------------------------
 # 日志
@@ -125,15 +122,10 @@ async def _tick() -> bool:
         page_end = body["page_end"]
         log.info("claimed %s (pages %d-%d)", task_id, page_start, page_end)
 
-        if "pdf_bytes" in body:
-            # 兼容旧 scheduler：整本 PDF base64 + 本地裁页
-            pdf_bytes = base64.b64decode(body["pdf_bytes"])
-            piece = extract_page_range(pdf_bytes, page_start, page_end)
-        else:
-            # 两步式：claim 给 pdf_url，原始二进制拉取（已是预切片，无需再裁）
-            pr = await cli.get(f"{SCHEDULER_URL}{body['pdf_url']}")
-            pr.raise_for_status()
-            piece = pr.content
+        # 两步式：claim 给 pdf_url，原始二进制拉取（已是预切片，无需再裁）
+        pr = await cli.get(f"{SCHEDULER_URL}{body['pdf_url']}")
+        pr.raise_for_status()
+        piece = pr.content
         t0 = time.time()
         try:
             # 解析放到线程里跑：parse_pdf 是同步重计算（OCR 一页可达分钟级），
