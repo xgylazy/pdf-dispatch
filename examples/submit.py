@@ -7,7 +7,6 @@ import requests
 
 SCHED = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:28765"
 PDF = sys.argv[2] if len(sys.argv) > 2 else r"D:\project\py_agent\PP-OCRv6\std_docs\GBT35273b.pdf"
-SPLIT_SIZE = int(sys.argv[3]) if len(sys.argv) > 3 else 10  # 每片页数，调小可提高并行度
 PDF = PDF.strip("\'\"")
 
 if not os.path.isfile(PDF):
@@ -19,9 +18,8 @@ if not os.path.isfile(PDF):
 t0 = time.time()
 
 with open(PDF, "rb") as f:
-    # 显式给了第三个参数才传 split_size，否则由调度中心按内容自动分片
-    form = {"split_size": SPLIT_SIZE} if len(sys.argv) > 3 else {}
-    r = requests.post(f"{SCHED}/jobs", files={"file": (PDF, f)}, data=form)
+    # split_size 由调度中心按 PDF 内容自动判定（扫描件/文字页规则见 build.conf）
+    r = requests.post(f"{SCHED}/jobs", files={"file": (PDF, f)})
 r.raise_for_status()
 job = r.json()
 print("job:", job.get("job_id"), "pages:", job.get("pages"),
