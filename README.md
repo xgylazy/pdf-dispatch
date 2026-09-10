@@ -70,9 +70,9 @@ python examples/submit.py http://localhost:28765 doc.pdf
 ```bash
 cd /path/to/pdf_dispatch
 
-# 0. 一次性：批量配 SSH 密钥（不用逐台 ssh-copy-id）
-./scripts/setup_keys.sh                  # 所有机器同一密码（会提示输入一次）
-./scripts/setup_keys.sh -f passwords.txt # 不同密码：每行 user@host:password
+# 0. 一次性：批量配 SSH 密钥（并行，已免密的机器自动跳过）
+python scripts/setup_keys.py -p YourPassword     # 所有机器同一密码 -> 并行
+python scripts/setup_keys.py -f passwords.txt    # 不同密码：每行 host:password
 
 # 1. 构建（约 5 分钟；下载 Python + pip 装依赖 + 下模型）
 ./scripts/build_standalone.sh
@@ -196,7 +196,7 @@ $ wc -l result.jsonl        # 例如 1177 行
 
 ## 安全性
 
-- **deploy.py** 用 SSH 密钥认证（不传密码），密钥通过 `scripts/setup_keys.sh` 批量抄到目标机，多台并行部署；
+- **deploy.py** 用 SSH 密钥认证（不传密码），密钥通过 `scripts/setup_keys.py` 并行批量抄到目标机；
 - `start_worker.sh` / `start_scheduler.sh` 内置 `PADDLE_PDX_CACHE_HOME` 环境变量，PaddleOCR **永不联网下载**；
 - 调度中心只监听入站，**不主动发起到 worker 的连接**；
 - worker 无端口，无法从外部访问；
