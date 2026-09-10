@@ -10,7 +10,7 @@
 #   ./scripts/setup_keys.sh -p MyPassword          # 所有机器同一密码
 #   ./scripts/setup_keys.sh -f passwords.txt       # 每行：user@host:password
 #
-# 完成后跑 ./scripts/deploy.sh servers.txt 即可无密码部署。
+# 完成后跑 python scripts/deploy.py servers.txt 即可无密码并行部署。
 set -euo pipefail
 
 SERVERS="servers.txt"
@@ -67,4 +67,4 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "$SERVERS"
 
 echo
-echo "[done] 已配置 ${COPIED} 台机器。现在可以跑： ./scripts/deploy.sh ${SERVERS}"
+echo "[done] 已配置 ${COPIED} 台机器。现在可以跑： python scripts/deploy.py ${SERVERS}"

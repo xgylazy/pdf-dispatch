@@ -4,7 +4,7 @@
 #   user@ip               worker（自动检测）
 #   user@ip app=scheduler  调度中心（通常只一台）
 #
-# 部署： ./deploy.sh servers.txt
+# 部署： python scripts/deploy.py servers.txt
 #
 # 示例：
 # admin@10.0.0.10 app=scheduler

@@ -81,7 +81,7 @@ cd /path/to/pdf_dispatch
 ./scripts/package.sh
 ```
 
-第 0 步只需跑一次，之后重跑 `deploy.sh` 即可热更新代码。
+第 0 步只需跑一次，之后重跑 `deploy.py` 即可热更新代码。
 
 产出：`dist/pdf-distribute-<ver>.tar.gz`
 
@@ -96,7 +96,7 @@ vim servers.txt
 #   admin@10.0.0.12 app=worker
 
 # 4. 一键分发
-./scripts/deploy.sh servers.txt
+python scripts/deploy.py servers.txt
 ```
 
 ### 模式 C：Docker 单机部署（替代模式 A，逻辑相同）
@@ -126,7 +126,7 @@ gh release download v0.1.0 --pattern "pdf-distribute-*.tar.gz"
 tar -xzf pdf-distribute-0.1.0.tar.gz -C .
 
 # 7. 部署
-./scripts/deploy.sh servers.txt
+python scripts/deploy.py servers.txt
 ```
 
 完整 workflow 已写在 `.github/workflows/build.yml`——本地零 Linux 也能出产物。
@@ -196,7 +196,7 @@ $ wc -l result.jsonl        # 例如 1177 行
 
 ## 安全性
 
-- **deploy.sh** 用 SSH 密钥认证（不传密码），密钥通过 `scripts/setup_keys.sh` 批量抄到目标机；
+- **deploy.py** 用 SSH 密钥认证（不传密码），密钥通过 `scripts/setup_keys.sh` 批量抄到目标机，多台并行部署；
 - `start_worker.sh` / `start_scheduler.sh` 内置 `PADDLE_PDX_CACHE_HOME` 环境变量，PaddleOCR **永不联网下载**；
 - 调度中心只监听入站，**不主动发起到 worker 的连接**；
 - worker 无端口，无法从外部访问；
@@ -225,12 +225,12 @@ pymupdf>=23.11
 | worker 日志报 `RuntimeError: 离线 OCR 启动失败` | `OCR_MODEL_DIR` 指向目录缺模型文件 | 检查 `models/official_models/<model_name>/inference.pdiparams` 是否存在 |
 | `PADDLE_PDX_CACHE_HOME` 设后仍下载 | 该环境变量被其他环境变量覆盖 | 在 start_worker.sh 末尾加 `echo $PADDLE_PDX_CACHE_HOME` 验证 |
 | worker 拉不到任务 | `SCHEDULER_URL` 写错 / 调度中心未启动 | `curl http://<scheduler>:28765/internal/claim` 测通 |
-| deploy.sh 报 `PID 文件存在但进程不存在` | 上次 worker 被 kill -9 没清理 | `start_worker.sh` 已处理：`kill -0` 检测活才 kill |
+| deploy.py 报 `PID 文件存在但进程不存在` | 上次 worker 被 kill -9 没清理 | 部署脚本已处理：PID 文件 + pkill 双重清理 |
 </｜DSML｜parameter>
 
 
 github action
-./scripts/deploy.sh servers.txt
+python scripts/deploy.py servers.txt
 curl http://192.192.98.86:28765/docs
 curl http://192.192.98.86:28765/stats
 
