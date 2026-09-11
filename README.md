@@ -265,7 +265,7 @@ python examples/submit.py http://192.192.98.86:28765 "D:/ouryun/pdf/GBT 28448-20
 
 292页扫描件A-前12页测试：
 python examples/submit.py http://192.192.98.86:28765 "D:/project/pdf_dispatch/test/GBT28448-2019_前12页.pdf"
-总耗时 483.61s
+总耗时 483.61s - 1页pdf平均40.3s
 
 
 ## 踩坑记录：paddle OCR 推理占用 GIL 导致 worker 心跳停发（v0.1.50 修复）
