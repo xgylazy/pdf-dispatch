@@ -123,6 +123,14 @@ fi
 # 兜底：清理绕过 PID 文件启动的残留进程（注意会打断执行中的 chunk，请尽量无任务时部署）
 pkill -f "{pkill_target}" 2>/dev/null || true
 sleep 1
+# 日志按版本归档：旧日志移成 .旧版本.时间戳.log，新版本从空日志开始
+# （包内 VERSION 此刻还是旧版本，tar 覆盖后才是新版本）
+LOGF={dir_}/data/logs/{app}.log
+if [[ -f "$LOGF" ]]; then
+  OLD_VER=unknown
+  [[ -f {dir_}/VERSION ]] && OLD_VER="$(cat {dir_}/VERSION)"
+  mv "$LOGF" "{dir_}/data/logs/{app}.v${{OLD_VER}}.$(date +%Y%m%d_%H%M%S).log"
+fi
 tar -xzf /tmp/{pkg_name} -C {dir_} || {{ echo "[FAILED] tar 解压失败"; exit 1; }}
 cd {dir_} || exit 1
 # 清理历史版本/手工部署的残留目录（当前包结构已不含这些）

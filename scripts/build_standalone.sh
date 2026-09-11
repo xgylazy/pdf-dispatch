@@ -95,6 +95,7 @@ echo "[3/3] 组装"
 
 # worker
 cp -r "$PROJ/worker" "$PROJ/shared" "$DIST_WK/"
+cp "$PROJ/VERSION" "$DIST_WK/VERSION"          # 包内版本号：部署脚本做日志归档用
 # 打包构建机上的 libgomp（paddle 硬依赖，目标机内网无法 yum/apt 安装）
 mkdir -p "$DIST_WK/python/lib"
 for LG in /usr/lib/x86_64-linux-gnu/libgomp.so.1 /lib64/libgomp.so.1; do
@@ -120,6 +121,7 @@ WKSTART
 
 # scheduler
 cp -r "$PROJ/scheduler" "$PROJ/shared" "$DIST_SC/"
+cp "$PROJ/VERSION" "$DIST_SC/VERSION"
 cat > "$DIST_SC/start.sh" <<'SCSTART'
 #!/bin/bash
 set -euo pipefail
