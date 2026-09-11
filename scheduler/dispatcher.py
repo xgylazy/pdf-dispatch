@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import httpx
 import json
 import logging
 import time
@@ -37,6 +38,7 @@ class Dispatcher:
         self._pending: deque = deque()
         self._num_chunks: dict[str, int] = {}
         self._chunks_done: dict[str, int] = {}
+        self._aborted: set[str] = set()   # 被取消的 task_id（worker 解析时会轮询到）
         self._backends: dict[str, BackendInfo] = {}
 
     # ---------- 后端 ----------
@@ -118,6 +120,8 @@ class Dispatcher:
             job = self.store.load_job(job_id)
             if not job:
                 continue
+            if job.status == JobStatus.CANCELLED:
+                continue    # 已取消的 job 不复活
             self._num_chunks[job_id] = job.num_chunks
             # 启动时从磁盘统计已完成的 chunk，避免重启后计数器归零
             done = sum(1 for t in self.store.tasks_of(job_id)
@@ -139,16 +143,18 @@ class Dispatcher:
     # ---------- 分发：worker claim ----------
 
     async def claim(self, backend_id: str | None = None) -> Optional[dict]:
-        if not self._pending:
-            return None
-        job_id, ck = self._pending.popleft()
-        be = backend_id or (self._pick_backend().backend_id
-                            if self._pick_backend() else "local")
-        await self.store.update_task(
-            f"{job_id}_{ck.index}", **{"status": TaskStatus.ASSIGNED,
-                                       "backend_id": be})
-        await self._touch_backend(be, +1)
-        return await self._payload(job_id, ck)
+        while self._pending:
+            job_id, ck = self._pending.popleft()
+            task_id = f"{job_id}_{ck.index}"
+            if task_id in self._aborted:
+                continue    # 已取消的任务直接丢弃（磁盘状态已是 CANCELLED）
+            be = backend_id or (self._pick_backend().backend_id
+                                if self._pick_backend() else "local")
+            await self.store.update_task(
+                task_id, **{"status": TaskStatus.ASSIGNED, "backend_id": be})
+            await self._touch_backend(be, +1)
+            return await self._payload(job_id, ck)
+        return None
 
     async def _payload(self, job_id: str, ck: Chunk) -> dict:
         job = self.store.load_job(job_id)
@@ -180,7 +186,104 @@ class Dispatcher:
 
     # ---------- 回调 ----------
 
+    def _find_backend(self, backend_id: str) -> Optional[BackendInfo]:
+        b = self._backends.get(backend_id)
+        if b:
+            return b
+        bid = backend_id.split("@")[0]
+        return next((v for k, v in self._backends.items()
+                     if k.split("@")[0] == bid), None)
+
+    async def _push_abort(self, backend_id: str, task_id: str) -> None:
+        """尽力而为地通知 worker 立刻终止该任务；推送失败也不影响正确性
+        （结果在 task_done 阶段仍会被丢弃）。"""
+        b = self._find_backend(backend_id) if backend_id else None
+        if not b or not b.url:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=3) as cli:
+                await cli.post(f"{b.url}/abort/{task_id}")
+        except Exception:
+            pass
+
+    async def task_state(self, task_id: str) -> Optional[str]:
+        t = self.store.load_task(task_id)
+        return t.status.value if t else None
+
+    async def cancel_task(self, task_id: str) -> bool:
+        t = self.store.load_task(task_id)
+        if not t or t.status in (TaskStatus.DONE, TaskStatus.CANCELLED):
+            return False
+        self._aborted.add(task_id)
+        await self.store.update_task(task_id, status=TaskStatus.CANCELLED)
+        await self._push_abort(t.backend_id or "", task_id)
+        return True
+
+    async def requeue_task(self, task_id: str) -> bool:
+        """重新执行某个分片：清除结果、重新入队（预切 PDF 片会重发给 worker）。"""
+        t = self.store.load_task(task_id)
+        if not t:
+            return False
+        self._aborted.discard(task_id)
+        r = self.store.task_result(task_id)
+        if r and r.get("ok"):
+            self._chunks_done[t.job_id] = max(0, self._chunks_done.get(t.job_id, 0) - 1)
+            await self.store.update_job(t.job_id, chunks_done=self._chunks_done[t.job_id])
+        self.store.clear_task_result(task_id)
+        await self.store.update_task(task_id, status=TaskStatus.PENDING)
+        job = self.store.load_job(t.job_id)
+        if job and job.status == JobStatus.CANCELLED:
+            await self.store.update_job(t.job_id, status=JobStatus.RUNNING)
+        self._pending.append((t.job_id, Chunk(index=t.chunk_index,
+                                              page_start=t.page_start,
+                                              page_end=t.page_end,
+                                              page_count=t.page_end - t.page_start + 1)))
+        return True
+
+    async def cancel_job(self, job_id: str) -> int:
+        """取消整个 job：未完成的分片全部标记 CANCELLED 并推送终止指令。"""
+        job = self.store.load_job(job_id)
+        if not job:
+            return 0
+        n = 0
+        for t in self.store.tasks_of(job_id):
+            if t.status in (TaskStatus.DONE, TaskStatus.CANCELLED):
+                continue
+            self._aborted.add(t.task_id)
+            await self.store.update_task(t.task_id, status=TaskStatus.CANCELLED)
+            await self._push_abort(t.backend_id or "", t.task_id)
+            n += 1
+        self._pending = deque(x for x in self._pending if x[0] != job_id)
+        await self.store.update_job(job_id, status=JobStatus.CANCELLED)
+        return n
+
+    async def rerun_job(self, job_id: str) -> int:
+        """整个 job 重跑：清结果、全部重新入队。"""
+        if not self.store.load_job(job_id):
+            return 0
+        n = 0
+        for t in self.store.tasks_of(job_id):
+            self._aborted.discard(t.task_id)
+            self.store.clear_task_result(t.task_id)
+            await self.store.update_task(t.task_id, status=TaskStatus.PENDING)
+            self._pending.append((job_id, Chunk(index=t.chunk_index,
+                                                page_start=t.page_start,
+                                                page_end=t.page_end,
+                                                page_count=t.page_end - t.page_start + 1)))
+            n += 1
+        self._chunks_done[job_id] = 0
+        await self.store.update_job(job_id, status=JobStatus.RUNNING, chunks_done=0)
+        return n
+
     async def on_task_done(self, cb: TaskCallback) -> None:
+        # 已取消/删除的任务：结果直接丢弃
+        if cb.task_id in self._aborted:
+            await self._touch_backend(cb.backend_id or "", -1)
+            return
+        t = self.store.load_task(cb.task_id)
+        if t is not None and t.status == TaskStatus.CANCELLED:
+            await self._touch_backend(cb.backend_id or "", -1)
+            return
         self.store.save_task_result(
             cb.task_id, ok=cb.ok, records=cb.records,
             text_concat=cb.text_concat, error=cb.error, parse_ms=cb.parse_ms)

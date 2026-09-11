@@ -16,14 +16,15 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import multiprocessing as mp
 import os
 import signal
 import sys
 import time
 import uuid
-from concurrent.futures import ProcessPoolExecutor
 
 import httpx
+from fastapi import FastAPI
 
 # ---------------------------------------------------------------------------
 # 日志
@@ -80,21 +81,83 @@ def _engine_has_ocr() -> bool:
     return "paddle" in ENGINE_MODULE or "pdf2tree" in ENGINE_MODULE
 
 
-# 解析专用子进程池（单进程即可：主循环本身串行领任务）。
-# 子进程里 paddle 模型只加载一次并常驻，后续任务直接复用。
-_parse_executor: ProcessPoolExecutor | None = None
+# 解析专用常驻子进程（单进程即可：主循环本身串行领任务）。
+# 子进程里 paddle 模型只加载一次并常驻，后续任务直接复用；
+# 任务被取消时父进程直接 kill 子进程（独立 GIL，主进程心跳不受任何影响）。
+_MP_CTX = mp.get_context("spawn")
+_parse_proc: mp.Process | None = None
+_parse_cmd_conn = None
+_parse_res_conn = None
 
 
-def _parse_pool() -> ProcessPoolExecutor:
-    global _parse_executor
-    if _parse_executor is None:
-        _parse_executor = ProcessPoolExecutor(max_workers=1)
-    return _parse_executor
+def _parse_server(cmd_conn, res_conn) -> None:
+    """子进程主循环：收 (piece, offset) → 解析 → 回 (status, payload)。"""
+    while True:
+        try:
+            cmd = cmd_conn.recv()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if cmd is None:
+            break
+        piece, offset = cmd
+        try:
+            res_conn.send(("ok", _engine_parse_pdf(piece, page_offset=offset)))
+        except BaseException as e:      # noqa: BLE001  解析崩溃不能带走子进程循环
+            try:
+                res_conn.send(("error", str(e)[:500]))
+            except Exception:
+                pass
 
 
-def _parse_task(piece: bytes, page_offset: int) -> list:
-    """子进程入口：跑解析引擎（独立 GIL，不拖累主进程心跳）。"""
-    return _engine_parse_pdf(piece, page_offset=page_offset)
+def _ensure_parse_proc() -> None:
+    global _parse_proc, _parse_cmd_conn, _parse_res_conn
+    if _parse_proc is not None and _parse_proc.is_alive():
+        return
+    cmd_parent, cmd_child = _MP_CTX.Pipe(duplex=True)
+    res_parent, res_child = _MP_CTX.Pipe(duplex=False)
+    p = _MP_CTX.Process(target=_parse_server, args=(cmd_child, res_child),
+                        daemon=True)
+    p.start()
+    cmd_child.close()
+    res_child.close()
+    _parse_proc, _parse_cmd_conn, _parse_res_conn = p, cmd_parent, res_parent
+
+
+def _kill_parse_proc() -> None:
+    global _parse_proc, _parse_cmd_conn, _parse_res_conn
+    try:
+        if _parse_proc is not None:
+            _parse_proc.kill()
+            _parse_proc.join(timeout=5)
+    except Exception:
+        pass
+    _parse_proc = None
+    _parse_cmd_conn = None
+    _parse_res_conn = None
+
+
+# ---------------------------------------------------------------------------
+# 取消指令接收端口（scheduler 推送 POST /abort/{task_id}）
+# ---------------------------------------------------------------------------
+WORKER_PORT = int(os.getenv("WORKER_PORT", "28766"))
+
+app = FastAPI(title="pdf-dispatch worker")
+_current: dict = {"task_id": None, "abort": False}
+
+
+@app.post("/abort/{task_id}")
+async def _abort_task(task_id: str):
+    """scheduler 取消任务时推送：让正在解析的子进程立刻终止。"""
+    if _current.get("task_id") == task_id:
+        _current["abort"] = True
+    return {"ok": True, "backend_id": BACKEND_ID, "aborted": _current["abort"]}
+
+
+@app.get("/")
+async def _root():
+    return {"backend_id": BACKEND_ID, "pid": WORKER_PID,
+            "current_task": _current.get("task_id"),
+            "abort": _current.get("abort", False)}
 
 # ---------------------------------------------------------------------------
 # 心跳
@@ -108,7 +171,7 @@ async def _heartbeat_loop() -> None:
                     current_active = _active_tasks
                 await cli.post(f"{SCHEDULER_URL}/internal/heartbeat",
                                json={"backend_id": BACKEND_ID, "ip": _get_worker_ip(), "pid": WORKER_PID,
-                                     "url": BACKEND_ID,
+                                     "url": f"http://{_get_worker_ip()}:{WORKER_PORT}",
                                      "capacity": CAPACITY,
                                      "active_tasks": current_active,
                                      "pdf_capable": _engine_has_ocr()})
@@ -145,20 +208,44 @@ async def _tick() -> bool:
         pr.raise_for_status()
         piece = pr.content
         t0 = time.time()
-        try:
-            # 解析放到【子进程】跑：paddle 推理会占住 GIL，线程/事件循环都会被
-            # 冻住（心跳停发 → 调度中心误判不健康）。子进程有独立 GIL，父进程
-            # 的心跳/claim 循环全程畅通，且 paddle 崩溃也不会带走 worker 主进程。
-            loop = asyncio.get_running_loop()
-            records = await loop.run_in_executor(
-                _parse_pool(), _parse_task, piece, page_start - 1)
-            ok, err = True, None
+        # 解析放到【子进程】跑：paddle 推理会占住 GIL，线程/事件循环都会被
+        # 冻住（心跳停发 → 调度中心误判不健康）。子进程有独立 GIL，父进程
+        # 的心跳/claim 循环全程畅通。
+        # 取消：scheduler 推 POST /abort/{task_id} → 置 abort 标志 → kill 子进程。
+        _ensure_parse_proc()
+        _current["task_id"] = task_id
+        _current["abort"] = False
+        _parse_cmd_conn.send((piece, page_start - 1))
+        loop = asyncio.get_running_loop()
+        aborted = False
+        result = None
+        while True:
+            got = await loop.run_in_executor(None, _parse_res_conn.poll, 1.0)
+            if got or _current["abort"]:
+                break
+        if _current["abort"]:
+            aborted = True
+        else:
+            try:
+                status, payload = _parse_res_conn.recv()
+                result = payload if status == "ok" else None
+                err = None if status == "ok" else str(payload)
+            except EOFError:
+                err = "parse child died"
+        parse_ms = int((time.time() - t0) * 1000)
+        if aborted:
+            _kill_parse_proc()
+            records, ok, err = [], False, "cancelled"
+            log.info("parse aborted by scheduler: %s", task_id)
+        elif result is not None:
+            records, ok = result, True
             log.info("parsed %s OK (%d records, %.1fs)",
                      task_id, len(records), time.time() - t0)
-        except Exception as e:
-            records, ok, err = [], False, str(e)[:300]
-            log.exception("parse failed %s: %s", task_id, err)
-        parse_ms = int((time.time() - t0) * 1000)
+        else:
+            records, ok = [], False
+            log.error("parse failed %s: %s", task_id, err)
+        _current["task_id"] = None
+        _current["abort"] = False
 
         cb = {"task_id": task_id, "job_id": body["job_id"],
               "chunk_index": body["chunk_index"], "page_start": page_start,
@@ -176,8 +263,15 @@ async def _tick() -> bool:
 
 
 async def _main_loop() -> None:
+    # 取消指令接收端口（与主循环同一事件循环，/abort 处理器直接改共享状态）
+    import uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=WORKER_PORT,
+                            log_level="warning")
+    uv_server = uvicorn.Server(config)
+    uv_server.install_signal_handlers = lambda: None   # 信号交给 worker 自己处理
+    asyncio.create_task(uv_server.serve())
     asyncio.create_task(_heartbeat_loop())
-    log.info("main loop started")
+    log.info("main loop started (abort port %d)", WORKER_PORT)
     while True:
         try:
             got = await _tick()

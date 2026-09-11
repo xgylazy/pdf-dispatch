@@ -73,7 +73,7 @@ done
 # 验证自带解释器随包可用（防止只拷了依赖没拷解释器/漏依赖的回归）
 "${DIST_SC}/python/bin/python3" -c 'import sys, uvicorn, fastapi, pymupdf, httpx, python_multipart; print("bundle python OK:", sys.version)' \
   || { echo "[error] scheduler 自带 Python 验证失败"; exit 1; }
-"${DIST_WK}/python/bin/python3" -c 'import sys, httpx, pymupdf, pydantic, paddleocr; print("bundle python OK:", sys.version)' \
+"${DIST_WK}/python/bin/python3" -c 'import sys, httpx, pymupdf, pydantic, paddleocr, fastapi, uvicorn; print("bundle python OK:", sys.version)' \
   || { echo "[error] worker 自带 Python 验证失败"; exit 1; }
 
 # OCR 模型

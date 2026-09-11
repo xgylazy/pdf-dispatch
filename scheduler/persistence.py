@@ -133,6 +133,29 @@ class FileStore:
         p = self._task_path(self.task_dir, task_id)
         return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else None
 
+    def clear_task_result(self, task_id: str) -> None:
+        """清掉任务结果并重置为 PENDING（重新执行前调用）。"""
+        p = self._task_path(self.task_dir, task_id)
+        if not p.is_file():
+            return
+        obj = json.loads(p.read_text(encoding="utf-8"))
+        for k in ("ok", "records", "text_concat", "error"):
+            obj.pop(k, None)
+        obj["status"] = TaskStatus.PENDING.value
+        obj["updated_at"] = time.time()
+        self._atomic_write(p, json.dumps(obj, ensure_ascii=False,
+                                        indent=2).encode("utf-8"))
+
+    def delete_job(self, job_id: str) -> None:
+        """删除 job 的全部磁盘痕迹（任务状态、结果、原件、预切片）。"""
+        import shutil
+        (self.job_dir / f"{job_id}.json").unlink(missing_ok=True)
+        for p in self.task_dir.glob(f"{job_id}_*.json"):
+            p.unlink(missing_ok=True)
+        (self.result_dir / f"{job_id}.jsonl").unlink(missing_ok=True)
+        (self.pdf_dir / f"{job_id}.pdf").unlink(missing_ok=True)
+        shutil.rmtree(self.pdf_dir / job_id, ignore_errors=True)
+
     def tasks_of(self, job_id: str) -> List[TaskInfo]:
         out: List[TaskInfo] = []
         for p in self.task_dir.glob(f"{job_id}_*.json"):

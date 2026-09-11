@@ -226,10 +226,26 @@ pymupdf>=23.11
 | deploy.py 报 `PID 文件存在但进程不存在` | 上次 worker 被 kill -9 没清理 | 部署脚本已处理：PID 文件 + pkill 双重清理 |
 </｜DSML｜parameter>
 
-
+ssh配置密钥：
 python scripts/setup_keys.py -p 123.com
-
+实际部署：
 python scripts/deploy.py servers.txt
+当发生：
+```
+[OK]      root@192.192.98.104 (worker, 335s)
+[started] pid=23951 worker
+[OK]      root@192.192.98.103 (worker, 498s)
+[started] pid=1230922 worker
+[FAILED]  root@192.192.98.106 (worker): scp 失败: Connection timed out during banner exchange
+Connection to 192.192.98.106 port 22 timed out
+scp: Connection closed
+[OK]      root@192.192.98.105 (worker, 569s)
+[started] pid=1667498 worker
+
+==> [deploy] 完成：成功 12/13
+```
+重新部署失败上传的tar包
+python scripts/redeploy.py root@192.192.98.106
 curl http://192.192.98.86:28765/docs
 curl http://192.192.98.86:28765/stats
 
@@ -238,5 +254,34 @@ curl http://192.192.98.86:28765/stats
 python examples/submit.py http://192.192.98.86:28765 D:/project/py_agent/PP-OCRv6/std_docs/GBT35273b.pdf
 292页扫描件A：
 python examples/submit.py http://192.192.98.86:28765 "D:/ouryun/pdf/GBT 28448-2019 信息安全技术网络安全等级保护测评要求.pdf"
+
 292页扫描件A-前12页测试：
 python examples/submit.py http://192.192.98.86:28765 "D:/project/pdf_dispatch/test/GBT28448-2019_前12页.pdf"
+总耗时 483.61s
+
+
+## 踩坑记录：paddle OCR 推理占用 GIL 导致 worker 心跳停发（v0.1.50 修复）
+
+**现象**：
+- OCR 任务执行期间，`/stats` 的 `backends` 变成空数组（所有 worker "消失"），
+  任务结束后又集体出现
+- worker 日志在 `paddle OCR 初始化完成` 之后完全静默：没有心跳、没有 claim、
+  没有报错（`heartbeat failed` 计数为 0——不是发送失败，是根本没发）
+- 任务本身不受影响，照常解析、照常回传结果，只是监控上看不见
+
+**根因**：
+CPython 的 GIL 是全进程一把锁。paddle 推理（`predictor.run()` 及其 Python
+胶水层）持锁时间极长，会把整个进程的所有线程冻住。v0.1.45 曾把解析从事件循环
+挪到 `asyncio.to_thread` 线程池——没用，因为 GIL 是进程级的，换线程绕不开，
+主线程（事件循环、心跳协程）照样被饿死。
+
+**修复**（`worker/main.py`）：
+解析改为 `ProcessPoolExecutor` 子进程执行。子进程有独立 GIL 和内存空间：
+- 父进程心跳/claim 循环全程畅通，OCR 期间 backends 稳定可见
+- paddle 崩溃只死子进程，worker 主进程自动继续领活
+- 模型在子进程首次任务时加载一次并常驻，后续任务直接复用
+
+**教训**：Python 里调用重 CPU 的 C/C++ 库（paddle/torch/自研 C 扩展）时，
+不要假设它释放了 GIL。验证方法很简单——跑任务的同时看进程其他线程是否还有
+心跳/日志输出。没有就换多进程（multiprocessing / ProcessPoolExecutor），
+这也是 gunicorn、celery、torch DataLoader worker 的通用做法。

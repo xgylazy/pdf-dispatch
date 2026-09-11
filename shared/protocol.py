@@ -15,6 +15,7 @@ class JobStatus(str, Enum):
     MERGING = "merging"          # 所有分片完成，合并中
     DONE = "done"                # 全部完成可取结果
     FAILED = "failed"            # 后端失败超限，作业失败
+    CANCELLED = "cancelled"      # 被客户端取消（未删除，结果/记录保留）
 
 
 class TaskStatus(str, Enum):
@@ -23,6 +24,7 @@ class TaskStatus(str, Enum):
     RUNNING = "running"      # worker 正在解析
     DONE = "done"            # worker 完成，已回调
     FAILED = "failed"        # 解析失败或超时
+    CANCELLED = "cancelled"  # 被取消（可 requeue 重新执行）
 
 
 # ---------- 作业 ----------

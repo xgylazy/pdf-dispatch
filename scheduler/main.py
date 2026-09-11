@@ -124,6 +124,52 @@ async def task_pdf(task_id: str):
     return Response(content=data, media_type="application/pdf")
 
 
+# ---------- 取消 / 重跑 ----------
+
+@app.get("/internal/task/{task_id}/state")
+async def task_state(task_id: str):
+    s = await dispatcher.task_state(task_id)
+    if s is None:
+        raise HTTPException(404, f"task not found: {task_id}")
+    return {"task_id": task_id, "status": s}
+
+
+@app.post("/internal/task/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """取消单个分片：正在解析的会被 worker 立即终止。"""
+    ok = await dispatcher.cancel_task(task_id)
+    if not ok:
+        raise HTTPException(404, f"task not found or already done: {task_id}")
+    return {"ok": True, "task_id": task_id, "status": "cancelled"}
+
+
+@app.post("/internal/task/{task_id}/requeue")
+async def requeue_task(task_id: str):
+    """重新执行单个分片：清除结果、重新入队分发。"""
+    ok = await dispatcher.requeue_task(task_id)
+    if not ok:
+        raise HTTPException(404, f"task not found: {task_id}")
+    return {"ok": True, "task_id": task_id, "status": "pending"}
+
+
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str):
+    """取消整个 job：未完成分片全部终止（已完成的结果保留）。"""
+    n = await dispatcher.cancel_job(job_id)
+    if not n and (await dispatcher.job_status(job_id)) is None:
+        raise HTTPException(404, f"job not found: {job_id}")
+    return {"ok": True, "job_id": job_id, "cancelled_tasks": n, "status": "cancelled"}
+
+
+@app.post("/jobs/{job_id}/rerun")
+async def rerun_job(job_id: str):
+    """整个 job 重跑：全部分片清除结果重新入队。"""
+    n = await dispatcher.rerun_job(job_id)
+    if not n:
+        raise HTTPException(404, f"job not found: {job_id}")
+    return {"ok": True, "job_id": job_id, "requeued_tasks": n, "status": "running"}
+
+
 @app.post("/internal/task_done")
 async def task_done(cb: TaskCallback):
     await dispatcher.on_task_done(cb)
