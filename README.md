@@ -40,7 +40,15 @@ PDF 解析分布式调度系统：调度中心接收 PDF → 分页切片 → �
 | POST | `/internal/claim` | worker | 取一片（响应为元数据 + pdf_url，两步式） |
 | GET | `/internal/task/{id}/pdf` | worker | 拉取该分片预切 PDF（原始二进制） |
 | POST | `/internal/task_done` | worker | 推回 `{ok, records, parse_ms}` |
-| POST | `/internal/heartbeat` | worker | 上报 `{backend_id, capacity, active_tasks, pdf_capable}` |
+| POST | `/internal/heartbeat` | worker | 上报 `{backend_id, capacity, active_tasks, pdf_capable, url}` |
+| GET | `/internal/task/{id}/state` | 运维 | 查分片状态 |
+| POST | `/internal/task/{id}/cancel` | 运维 | 取消单个分片（worker 立即终止解析） |
+| POST | `/internal/task/{id}/requeue` | 运维 | 重新执行单个分片 |
+| POST | `/jobs/{id}/cancel` | 客户端 | 取消整个 job（未完成分片全部终止） |
+| POST | `/jobs/{id}/rerun` | 客户端 | 整个 job 重跑（清结果重新入队） |
+
+worker 侧端口：`WORKER_PORT`（默认 28766），提供 `POST /abort/{task_id}` 接收
+调度中心的取消推送——worker 解析在独立子进程里跑，收到即杀，立即生效。
 
 ## 行契约
 
