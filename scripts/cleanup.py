@@ -66,23 +66,34 @@ def clean_one(userhost: str, app: str, opts: list[str]) -> tuple[bool, str]:
         return False, f"[FAILED]  {userhost}: {e}"
 
 
+def split_args(argv: list[str]) -> tuple[Path, list[str]]:
+    """统一参数规则：第一个以 .txt 结尾的位置参数 = servers 文件，其余 = 目标机器。"""
+    servers = Path("servers.txt")
+    targets = []
+    for a in argv:
+        if not targets and a.endswith(".txt"):
+            servers = Path(a)
+        else:
+            targets.append(a)
+    return servers, targets
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="清理 worker/scheduler 运行时数据")
-    ap.add_argument("targets", nargs="*",
-                    help="root@ip / 裸 ip；留空则清理 servers.txt 全部机器")
+    ap.add_argument("args", nargs="*",
+                    help="servers.txt（可选，默认 servers.txt）+ 目标机器（可选，默认全部）")
     ap.add_argument("--yes", action="store_true",
                     help="真正执行删除；不带此参数仅预览将清理的内容和体积")
-    ap.add_argument("--servers", default="servers.txt", help="servers.txt 路径")
     args = ap.parse_args()
 
-    servers_path = Path(args.servers)
+    servers_path, target_args = split_args(args.args)
     if not servers_path.exists():
         print(f"[ERROR] 找不到 {servers_path.resolve()}（请在项目根目录运行）")
         return 2
 
     all_targets = deploy.parse_servers(servers_path)
-    if args.targets:
-        targets = [(t if "@" in t else f"root@{t}", "worker") for t in args.targets]
+    if target_args:
+        targets = [(t if "@" in t else f"root@{t}", "worker") for t in target_args]
     else:
         targets = list(dict.fromkeys(all_targets))
     if not targets:

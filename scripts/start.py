@@ -84,19 +84,25 @@ def start_one(userhost: str, scheduler_url: str, opts: list[str]) -> tuple[bool,
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="唤醒 worker（只跑 start.sh，不动任务状态）")
-    ap.add_argument("targets", nargs="*",
-                    help="root@ip / 裸 ip；留空则唤醒 servers.txt 里全部 worker")
+    ap.add_argument("args", nargs="*",
+                    help="servers.txt（可选，默认 servers.txt）+ 目标机器（可选，默认全部）")
     args = ap.parse_args()
 
     servers_path = Path("servers.txt")
+    targets = []
+    for a in args.args:
+        if not targets and a.endswith(".txt"):
+            servers_path = Path(a)
+        else:
+            targets.append(a)
     if not servers_path.exists():
         print(f"[ERROR] 找不到 {servers_path.resolve()}（请在项目根目录运行）")
         return 2
 
     scheduler_url = scheduler_url_from(servers_path)
 
-    if args.targets:
-        targets = [(t if "@" in t else f"root@{t}") for t in args.targets]
+    if targets:
+        targets = [(t if "@" in t else f"root@{t}") for t in targets]
     else:
         targets = worker_hosts_from(servers_path)
     if not targets:

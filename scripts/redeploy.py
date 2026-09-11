@@ -29,14 +29,19 @@ def scheduler_url_from(servers_path: Path) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("用法: python scripts/redeploy.py root@192.192.98.106 [root@ip ...]")
-        return 2
+    args = [a for a in sys.argv[1:] if a not in ("-h", "--help")]
+    if "-h" in sys.argv or "--help" in sys.argv or not args:
+        print("用法: python scripts/redeploy.py [servers.txt] root@192.192.98.106 [root@ip ...]")
+        return 0 if ("-h" in sys.argv or "--help" in sys.argv) else 2
+
+    servers_path = Path("servers.txt")
+    if args[0].endswith(".txt"):
+        servers_path = Path(args.pop(0))
 
     version = deploy.read_version()
     pkg_wk, _ = deploy.ensure_artifacts(version)
-    scheduler_url = scheduler_url_from(Path("servers.txt"))
-    targets = [(t if "@" in t else f"root@{t}", "worker") for t in sys.argv[1:]]
+    scheduler_url = scheduler_url_from(servers_path)
+    targets = [(t if "@" in t else f"root@{t}", "worker") for t in args]
 
     print(f"==> [redeploy] v{version}  scheduler={scheduler_url}  待补 {len(targets)} 台")
     for uh, _ in targets:
